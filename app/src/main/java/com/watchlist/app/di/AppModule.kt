@@ -102,4 +102,13 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(NewsApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideJikanApiService(): JikanApiService =
+        Retrofit.Builder()
+            .baseUrl("https://api.jikan.moe/v4/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(JikanApiService::class.java)
 }

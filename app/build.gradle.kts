@@ -1,3 +1,11 @@
+import java.util.Properties
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -18,9 +26,9 @@ android {
         versionName = "1.0"
 
         // TMDB API Key - reemplazá con tu key de https://www.themoviedb.org/settings/api
-        buildConfigField("String", "TMDB_API_KEY", "\"59d3b02b1aaffad5a97a46099c79863b\"")
+        buildConfigField("String", "TMDB_API_KEY", "\"${localProperties.getProperty("TMDB_API_KEY")}\"")
         // NewsAPI Key - reemplazá con tu key de https://newsapi.org/
-        buildConfigField("String", "NEWS_API_KEY", "\"80e253a9e7974b008b51933cfab9dab1\"")
+        buildConfigField("String", "NEWS_API_KEY", "\"${localProperties.getProperty("NEWS_API_KEY")}\"")
     }
 
     buildTypes {
