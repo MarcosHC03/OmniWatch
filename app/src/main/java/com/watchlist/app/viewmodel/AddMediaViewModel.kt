@@ -26,6 +26,16 @@ data class AddMediaUiState(
     val platform: String = "",
     val year: Int = 0,
     val tmdbId: Int = 0,
+
+    // TMDB seasons data — se llena al seleccionar un resultado de TMDB
+    // availableSeasons > 0 activa el DropdownMenu de temporadas (solo SERIES)
+    val availableSeasons: Int = 0,
+    // Mapa temporada → cantidad de episodios, ej. {1 to 10, 2 to 13}
+    val episodesPerSeason: Map<Int, Int> = emptyMap(),
+
+    // Validación
+    val watchedEpisodesError: Boolean = false,
+
     val searchResults: List<TmdbMedia> = emptyList(),
     val isSearching: Boolean = false,
     val isSaving: Boolean = false,
@@ -41,6 +51,8 @@ class AddMediaViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(AddMediaUiState())
     val uiState: StateFlow<AddMediaUiState> = _uiState
+
+    // ---- Carga para edición ----
 
     fun loadItemForEditing(itemId: Long) {
         if (itemId <= 0L) return
@@ -65,25 +77,33 @@ class AddMediaViewModel @Inject constructor(
         }
     }
 
+    // ---- Búsqueda TMDB ----
+
     fun searchTmdb(query: String) {
         if (query.isBlank()) return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSearching = true)
-            val results = repository.searchMulti(query)
+            
+            // Ruteo inteligente según el MediaType seleccionado
+            val results = if (_uiState.value.mediaType == MediaType.ANIME) {
+                repository.searchJikanAnime(query)
+            } else {
+                repository.searchMulti(query)
+            }
+            
             _uiState.value = _uiState.value.copy(searchResults = results, isSearching = false)
         }
     }
 
     fun selectTmdbResult(media: TmdbMedia) {
-        val year = runCatching {
-            media.displayDate.take(4).toInt()
-        }.getOrDefault(0)
-
+        val year = runCatching { media.displayDate.take(4).toInt() }.getOrDefault(0)
         val type = when (media.mediaType) {
             "movie" -> MediaType.MOVIE
             "tv" -> MediaType.SERIES
             else -> _uiState.value.mediaType
         }
+        // En el futuro se puede hacer un call a /tv/{id} para obtener number_of_seasons
+        // y episode_run_time por temporada. Por ahora reseteamos la info de temporadas.
         _uiState.value = _uiState.value.copy(
             title = media.displayTitle,
             overview = media.overview ?: "",
@@ -91,23 +111,101 @@ class AddMediaViewModel @Inject constructor(
             year = year,
             tmdbId = media.id,
             mediaType = type,
+            availableSeasons = 0,
+            episodesPerSeason = emptyMap(),
+            currentSeason = 1,
+            totalEpisodes = 0,
+            watchedEpisodes = 0,
+            watchedEpisodesError = false,
             searchResults = emptyList()
         )
     }
 
-    fun updateTitle(v: String) { _uiState.value = _uiState.value.copy(title = v) }
-    fun updateMediaType(v: MediaType) { _uiState.value = _uiState.value.copy(mediaType = v) }
-    fun updateWatchStatus(v: WatchStatus) { _uiState.value = _uiState.value.copy(watchStatus = v) }
-    fun updateRating(v: Float) { _uiState.value = _uiState.value.copy(rating = v) }
-    fun updateTotalEpisodes(v: Int) { _uiState.value = _uiState.value.copy(totalEpisodes = v) }
-    fun updateWatchedEpisodes(v: Int) { _uiState.value = _uiState.value.copy(watchedEpisodes = v) }
-    fun updateCurrentSeason(v: Int) { _uiState.value = _uiState.value.copy(currentSeason = v) }
-    fun updatePlatform(v: String) { _uiState.value = _uiState.value.copy(platform = v) }
-    fun clearSearch() { _uiState.value = _uiState.value.copy(searchResults = emptyList()) }
+    fun clearSearch() {
+        _uiState.value = _uiState.value.copy(searchResults = emptyList())
+    }
+
+    // ---- Permite inyectar datos de temporadas desde fuera (ej. llamada a /tv/{id}) ----
+    fun setSeasonData(numberOfSeasons: Int, episodesPerSeason: Map<Int, Int>) {
+        _uiState.value = _uiState.value.copy(
+            availableSeasons = numberOfSeasons,
+            episodesPerSeason = episodesPerSeason
+        )
+    }
+
+    // ---- Actualizadores de campos ----
+
+    fun updateTitle(v: String) {
+        _uiState.value = _uiState.value.copy(title = v)
+    }
+
+    fun updateMediaType(v: MediaType) {
+        // Al cambiar a ANIME ocultamos temporada; al cambiar a MOVIE ocultamos eps
+        _uiState.value = _uiState.value.copy(
+            mediaType = v,
+            currentSeason = 1,
+            availableSeasons = 0
+        )
+    }
+
+    fun updateWatchStatus(v: WatchStatus) {
+        val s = _uiState.value
+        val newWatched = when (v) {
+            WatchStatus.COMPLETED -> s.totalEpisodes   // auto-completar
+            WatchStatus.PLANNED -> 0                    // resetear
+            WatchStatus.WATCHING -> s.watchedEpisodes
+        }
+        _uiState.value = s.copy(
+            watchStatus = v,
+            watchedEpisodes = newWatched,
+            watchedEpisodesError = false
+        )
+    }
+
+    fun updateRating(v: Float) {
+        _uiState.value = _uiState.value.copy(rating = v)
+    }
+
+    fun updateTotalEpisodes(v: Int) {
+        val s = _uiState.value
+        val hasError = s.watchedEpisodes > v && v > 0
+        _uiState.value = s.copy(totalEpisodes = v, watchedEpisodesError = hasError)
+    }
+
+    fun updateWatchedEpisodes(v: Int) {
+        val s = _uiState.value
+        // Si el usuario escribe eps siendo estado PLANNED → pasar a WATCHING automáticamente
+        val newStatus = if (v > 0 && s.watchStatus == WatchStatus.PLANNED)
+            WatchStatus.WATCHING
+        else
+            s.watchStatus
+        val hasError = s.totalEpisodes > 0 && v > s.totalEpisodes
+        _uiState.value = s.copy(
+            watchedEpisodes = v,
+            watchStatus = newStatus,
+            watchedEpisodesError = hasError
+        )
+    }
+
+    fun updateCurrentSeason(v: Int) {
+        val s = _uiState.value
+        // Si tenemos datos de episodios por temporada, autocompletar totalEpisodes
+        val autoTotal = s.episodesPerSeason[v]
+        _uiState.value = s.copy(
+            currentSeason = v,
+            totalEpisodes = autoTotal ?: s.totalEpisodes
+        )
+    }
+
+    fun updatePlatform(v: String) {
+        _uiState.value = _uiState.value.copy(platform = v)
+    }
+
+    // ---- Guardar ----
 
     fun saveItem() {
         val s = _uiState.value
-        if (s.title.isBlank()) return
+        if (s.title.isBlank() || s.watchedEpisodesError) return
         viewModelScope.launch {
             _uiState.value = s.copy(isSaving = true)
             val entity = MediaItemEntity(

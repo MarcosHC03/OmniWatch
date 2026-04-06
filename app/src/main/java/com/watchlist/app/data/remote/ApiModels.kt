@@ -28,7 +28,11 @@ data class TmdbMedia(
     val displayTitle get() = title ?: name ?: ""
     val displayOriginalTitle get() = originalTitle ?: originalName ?: ""
     val displayDate get() = releaseDate ?: firstAirDate ?: ""
-    val fullPosterPath get() = posterPath?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
+    val fullPosterPath: String get() {
+        if (posterPath == null) return ""
+        if (posterPath.startsWith("http")) return posterPath
+        return "https://image.tmdb.org/t/p/w500$posterPath"
+    }
     val fullBackdropPath get() = backdropPath?.let { "https://image.tmdb.org/t/p/w780$it" } ?: ""
 }
 

@@ -17,7 +17,12 @@ data class MyListUiState(
     val selectedTab: MediaType = MediaType.SERIES,
     val filterStatus: WatchStatus? = null,
     val searchQuery: String = "",
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+
+    // Estado de importación MAL
+    val isImporting: Boolean = false,
+    val importSuccessMessage: String? = null,
+    val importErrorMessage: String? = null
 )
 
 @HiltViewModel
@@ -28,32 +33,49 @@ class MyListViewModel @Inject constructor(
     private val _selectedTab = MutableStateFlow(MediaType.SERIES)
     private val _filterStatus = MutableStateFlow<WatchStatus?>(null)
     private val _searchQuery = MutableStateFlow("")
+    private val _importState = MutableStateFlow(
+        Triple(false, null as String?, null as String?) // isImporting, successMsg, errorMsg
+    )
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<MyListUiState> = combine(
         _selectedTab,
         _filterStatus,
-        _searchQuery
-    ) { tab, status, query -> Triple(tab, status, query) }
-        .flatMapLatest { (tab, status, query) ->
-            val flow = if (query.isBlank()) {
-                if (status != null)
-                    repository.getItemsByType(tab).map { list -> list.filter { it.watchStatus == status } }
-                else
-                    repository.getItemsByType(tab)
-            } else {
-                repository.searchItems(query).map { list -> list.filter { it.mediaType == tab } }
-            }
-            flow.map { items ->
-                MyListUiState(
-                    items = items,
-                    selectedTab = tab,
-                    filterStatus = status,
-                    searchQuery = query
-                )
-            }
+        _searchQuery,
+        _importState
+    ) { tab, status, query, importTriple ->
+        object {
+            val tab = tab
+            val status = status
+            val query = query
+            val isImporting = importTriple.first
+            val successMsg = importTriple.second
+            val errorMsg = importTriple.third
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MyListUiState())
+    }.flatMapLatest { params ->
+        val itemsFlow = if (params.query.isBlank()) {
+            if (params.status != null)
+                repository.getItemsByType(params.tab)
+                    .map { list -> list.filter { it.watchStatus == params.status } }
+            else
+                repository.getItemsByType(params.tab)
+        } else {
+            repository.searchItems(params.query)
+                .map { list -> list.filter { it.mediaType == params.tab } }
+        }
+
+        itemsFlow.map { items ->
+            MyListUiState(
+                items = items,
+                selectedTab = params.tab,
+                filterStatus = params.status,
+                searchQuery = params.query,
+                isImporting = params.isImporting,
+                importSuccessMessage = params.successMsg,
+                importErrorMessage = params.errorMsg
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MyListUiState())
 
     fun selectTab(type: MediaType) { _selectedTab.value = type }
     fun setFilter(status: WatchStatus?) { _filterStatus.value = status }
@@ -65,5 +87,38 @@ class MyListViewModel @Inject constructor(
 
     fun updateStatus(item: MediaItemEntity, status: WatchStatus) {
         viewModelScope.launch { repository.updateItem(item.copy(watchStatus = status)) }
+    }
+
+    // ---- Importación desde MyAnimeList ----
+
+    fun importFromMyAnimeList(username: String) {
+        if (username.isBlank()) return
+        viewModelScope.launch {
+            _importState.value = Triple(true, null, null)
+            try {
+                repository.importFromMyAnimeList(username)
+                // Después de importar, cambiar el tab a ANIME para mostrar los resultados
+                _selectedTab.value = MediaType.ANIME
+                _importState.value = Triple(
+                    false,
+                    "Lista de $username importada correctamente",
+                    null
+                )
+            } catch (e: Exception) {
+                val msg = when {
+                    e.message?.contains("404") == true ->
+                        "Usuario \"$username\" no encontrado en MyAnimeList"
+                    e.message?.contains("network") == true ||
+                    e.message?.contains("connect") == true ->
+                        "Sin conexión. Revisá tu internet e intentá de nuevo"
+                    else -> "No se pudo importar la lista. Intentá de nuevo"
+                }
+                _importState.value = Triple(false, null, msg)
+            }
+        }
+    }
+
+    fun clearImportMessages() {
+        _importState.value = Triple(false, null, null)
     }
 }

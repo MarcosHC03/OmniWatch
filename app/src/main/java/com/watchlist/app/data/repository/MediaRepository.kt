@@ -12,12 +12,15 @@ import com.watchlist.app.data.remote.TmdbRelease
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.watchlist.app.data.remote.JikanApiService
+import com.watchlist.app.data.remote.JikanAnimeListResponse
+import com.watchlist.app.data.remote.JikanAnimeListItem
 
 @Singleton
 class MediaRepository @Inject constructor(
     private val dao: MediaItemDao,
     private val tmdbApi: TmdbApiService,
-    private val newsApi: NewsApiService
+    private val newsApi: NewsApiService,
     private val jikanApiService: JikanApiService
 ) {
     // ---- Local DB ----
@@ -71,45 +74,75 @@ class MediaRepository @Inject constructor(
     suspend fun getEntertainmentNews(): List<NewsArticle> =
         runCatching { newsApi.getEntertainmentNews().articles }
             .getOrDefault(emptyList())
+
     suspend fun importFromMyAnimeList(username: String) {
         try {
-            // 1. Buscamos la lista gigante a internet
-            val response = jikanApiService.getUserAnimeList(username)
-            
-            // 2. Transformamos los datos de Jikan al molde de tu Base de Datos
-            val entitiesToInsert = response.data.map { item ->
+            var hasNextPage = true
+            var currentPage = 1
+            val allItems = mutableListOf<JikanAnimeListItem>()
+
+            // Paginación: Bajamos de a páginas hasta que Jikan diga que no hay más
+            while (hasNextPage) {
+                val response = jikanApiService.getUserAnimeList(username, currentPage)
+                allItems.addAll(response.data)
                 
-                // MAL usa números: 1=Viendo, 2=Completado, 6=Por ver.
+                hasNextPage = response.pagination?.hasNextPage == true
+                if (hasNextPage) {
+                    currentPage++
+                    kotlinx.coroutines.delay(400) // Delay de seguridad para no saturar la API
+                }
+            }
+
+            val entitiesToInsert = allItems.map { item ->
                 val mappedStatus = when (item.status) {
                     1 -> WatchStatus.WATCHING
                     2 -> WatchStatus.COMPLETED
-                    else -> WatchStatus.PLANNED // Si está dropeado o pausado, lo mandamos a "Por ver"
+                    else -> WatchStatus.PLANNED
                 }
-
-                // MAL puntúa sobre 10, vos sobre 5.
-                val mappedRating = (item.score / 2.0f)
 
                 MediaItemEntity(
                     title = item.anime.title,
                     posterPath = item.anime.images.jpg.imageUrl,
                     mediaType = MediaType.ANIME,
                     watchStatus = mappedStatus,
-                    rating = mappedRating,
+                    rating = (item.score / 2.0f),
                     totalEpisodes = item.anime.totalEpisodes ?: 0,
                     watchedEpisodes = item.episodesWatched,
                     year = item.anime.year ?: 0,
-                    // Guardamos el ID de MyAnimeList acá temporalmente para no repetir
                     tmdbId = item.anime.malId 
                 )
             }
 
-            // 3. Insertamos todo de golpe en la base de datos local
-            entitiesToInsert.forEach { entity ->
-                mediaItemDao.insertItem(entity)
-            }
+            entitiesToInsert.forEach { dao.insertItem(it) }
             
         } catch (e: Exception) {
-            e.printStackTrace() // Por si falla la red o el usuario no existe
+            e.printStackTrace()
+            throw e 
+        }
+    }
+
+    suspend fun searchJikanAnime(query: String): List<TmdbMedia> {
+        return try {
+            val response = jikanApiService.searchAnime(query)
+            response.data.map { anime ->
+                TmdbMedia(
+                    id = anime.malId,
+                    title = anime.title,
+                    name = anime.title,
+                    originalTitle = anime.title,
+                    originalName = anime.title,
+                    posterPath = anime.images.jpg.imageUrl,
+                    backdropPath = null, // Rellenamos el hueco
+                    mediaType = "anime", 
+                    firstAirDate = anime.year?.toString() ?: "",
+                    releaseDate = anime.year?.toString() ?: "",
+                    overview = "",
+                    voteAverage = 0.0,    // Rellenamos el hueco
+                    genreIds = emptyList() // Rellenamos el hueco
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 }

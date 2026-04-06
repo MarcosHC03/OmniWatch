@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +29,6 @@ import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
 import com.watchlist.app.navigation.Screen
-//import com.watchlist.app.ui.CommonComponents
 import com.watchlist.app.ui.StarRatingBar
 import com.watchlist.app.ui.WatchListBottomBar
 import com.watchlist.app.ui.WatchStatusBadge
@@ -42,6 +42,34 @@ fun MyListScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showSearch by remember { mutableStateOf(false) }
+    var showMalDialog by remember { mutableStateOf(false) }
+
+    // Snackbar para feedback de importación
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.importSuccessMessage) {
+        state.importSuccessMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearImportMessages()
+        }
+    }
+    LaunchedEffect(state.importErrorMessage) {
+        state.importErrorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearImportMessages()
+        }
+    }
+
+    // ---- Dialogo de importación MAL ----
+    if (showMalDialog) {
+        MalImportDialog(
+            onConfirm = { username ->
+                showMalDialog = false
+                viewModel.importFromMyAnimeList(username)
+            },
+            onDismiss = { showMalDialog = false }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -49,9 +77,30 @@ fun MyListScreen(
                 TopAppBar(
                     title = { Text("Mi lista", fontWeight = FontWeight.Bold) },
                     actions = {
+                        // Botón importar desde MAL
+                        IconButton(
+                            onClick = { showMalDialog = true },
+                            enabled = !state.isImporting
+                        ) {
+                            if (state.isImporting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Outlined.FileDownload,
+                                    contentDescription = "Importar de MyAnimeList",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        // Botón buscar
                         IconButton(onClick = { showSearch = !showSearch }) {
                             Icon(Icons.Filled.Search, contentDescription = "Buscar")
                         }
+                        // Botón agregar
                         IconButton(onClick = {
                             navController.navigate(Screen.AddMedia.createRoute())
                         }) {
@@ -62,6 +111,15 @@ fun MyListScreen(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
+
+                // Banner de carga durante importación
+                if (state.isImporting) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 if (showSearch) {
                     OutlinedTextField(
                         value = state.searchQuery,
@@ -74,7 +132,8 @@ fun MyListScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
-                // Tab bar: Series / Pelis / Anime
+
+                // Tabs: Series / Películas / Anime
                 TabRow(
                     selectedTabIndex = when (state.selectedTab) {
                         MediaType.SERIES -> 0
@@ -95,7 +154,8 @@ fun MyListScreen(
                         )
                     }
                 }
-                // Filter chips
+
+                // Chips de filtro por estado
                 FilterStatusRow(
                     selectedStatus = state.filterStatus,
                     onFilterChanged = { viewModel.setFilter(it) }
@@ -107,24 +167,47 @@ fun MyListScreen(
                 onClick = { navController.navigate(Screen.AddMedia.createRoute()) },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Agregar", tint = MaterialTheme.colorScheme.onPrimary)
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "Agregar",
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
             }
         },
-        bottomBar = { WatchListBottomBar(navController) }
+        bottomBar = { WatchListBottomBar(navController) },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         if (state.items.isEmpty()) {
             Box(
-                Modifier.fillMaxSize().padding(padding),
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Nada por acá todavía 👀", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        "Nada por acá todavía 👀",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Tocá + para agregar tu primer título",
                         color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
                         fontSize = 13.sp
                     )
+                    if (state.selectedTab == MediaType.ANIME) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(onClick = { showMalDialog = true }) {
+                            Icon(
+                                Icons.Outlined.FileDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Importar desde MyAnimeList")
+                        }
+                    }
                 }
             }
         } else {
@@ -150,6 +233,68 @@ fun MyListScreen(
     }
 }
 
+// ---- Dialog de importación MAL ----
+@Composable
+private fun MalImportDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var username by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Importar desde MyAnimeList", fontWeight = FontWeight.SemiBold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Ingresá tu nombre de usuario de MyAnimeList para importar tu lista de anime.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(0.7f)
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it
+                        showError = false
+                    },
+                    label = { Text("Usuario de MAL") },
+                    placeholder = { Text("ej: TuUsuario123") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    isError = showError,
+                    supportingText = if (showError) {
+                        { Text("Ingresá un nombre de usuario") }
+                    } else null
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (username.isBlank()) {
+                        showError = true
+                    } else {
+                        onConfirm(username.trim())
+                    }
+                }
+            ) {
+                Text("Importar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+// ---- Chips de filtro ----
 @Composable
 fun FilterStatusRow(
     selectedStatus: WatchStatus?,
@@ -184,6 +329,7 @@ fun FilterStatusRow(
     }
 }
 
+// ---- Card de cada item ----
 @Composable
 fun MediaItemCard(
     item: MediaItemEntity,
@@ -263,9 +409,16 @@ fun MediaItemCard(
                     )
                     Row {
                         IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = "Editar",
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
-                        IconButton(onClick = { showDeleteDialog = true }, modifier = Modifier.size(28.dp)) {
+                        IconButton(
+                            onClick = { showDeleteDialog = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
                             Icon(
                                 Icons.Filled.Delete,
                                 contentDescription = "Eliminar",
@@ -278,7 +431,7 @@ fun MediaItemCard(
 
                 Spacer(Modifier.height(4.dp))
 
-                // Status badge - clickeable para cambiar
+                // Badge de estado — tocable para cambiar
                 Box {
                     Box(Modifier.clickable { showStatusMenu = true }) {
                         WatchStatusBadge(item.watchStatus)
@@ -312,14 +465,35 @@ fun MediaItemCard(
 
                 if (item.mediaType != MediaType.MOVIE && item.totalEpisodes > 0) {
                     Spacer(Modifier.height(4.dp))
+                    // Barra de progreso de episodios
+                    val progress = if (item.totalEpisodes > 0)
+                        item.watchedEpisodes.toFloat() / item.totalEpisodes.toFloat()
+                    else 0f
                     Text(
-                        text = "${item.watchedEpisodes}/${item.totalEpisodes} eps · T${item.currentSeason}",
+                        text = buildString {
+                            append("${item.watchedEpisodes}/${item.totalEpisodes} eps")
+                            if (item.mediaType == MediaType.SERIES)
+                                append(" · T${item.currentSeason}")
+                        },
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(0.55f)
                     )
+                    if (item.watchStatus == WatchStatus.WATCHING && progress > 0f) {
+                        Spacer(Modifier.height(3.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    }
                 }
 
                 if (item.platform.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = item.platform,
                         fontSize = 11.sp,
