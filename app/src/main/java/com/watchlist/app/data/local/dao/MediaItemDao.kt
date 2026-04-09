@@ -12,6 +12,10 @@ interface MediaItemDao {
     @Query("SELECT * FROM media_items ORDER BY updatedAt DESC")
     fun getAllItems(): Flow<List<MediaItemEntity>>
 
+    // Versión suspend para leer una sola vez (backup, exportación)
+    @Query("SELECT * FROM media_items ORDER BY updatedAt DESC")
+    suspend fun getAllItemsOnce(): List<MediaItemEntity>
+
     @Query("SELECT * FROM media_items WHERE mediaType = :type ORDER BY updatedAt DESC")
     fun getItemsByType(type: MediaType): Flow<List<MediaItemEntity>>
 
@@ -26,6 +30,10 @@ interface MediaItemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: MediaItemEntity): Long
+
+    // Inserción en lote para importar backup o MAL — REPLACE actualiza si ya existe el ID
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<MediaItemEntity>)
 
     @Update
     suspend fun updateItem(item: MediaItemEntity)

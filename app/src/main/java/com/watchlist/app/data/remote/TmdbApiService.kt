@@ -2,6 +2,7 @@ package com.watchlist.app.data.remote
 
 import retrofit2.http.GET
 import retrofit2.http.Query
+import retrofit2.http.Path
 
 interface TmdbApiService {
 
@@ -47,4 +48,9 @@ interface TmdbApiService {
         @Query("language") language: String = "es-AR",
         @Query("sort_by") sortBy: String = "first_air_date.asc" // Las ordena de la más cercana al futuro
     ): TmdbReleasesResponse
+
+    @GET("tv/{tv_id}")
+    suspend fun getTvDetails(
+        @Path("tv_id") tvId: Int
+    ): TmdbTvDetails
 }

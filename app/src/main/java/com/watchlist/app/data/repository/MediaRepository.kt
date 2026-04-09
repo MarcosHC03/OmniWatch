@@ -9,19 +9,22 @@ import com.watchlist.app.data.remote.NewsArticle
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.TmdbMedia
 import com.watchlist.app.data.remote.TmdbRelease
+import com.watchlist.app.data.remote.TmdbTvDetails
+import com.watchlist.app.data.remote.JikanApiService
+import com.watchlist.app.data.remote.JikanAnimeListItem
+import com.watchlist.app.data.remote.MalApiService
+import com.watchlist.app.data.remote.MalTokenResponse
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
-import com.watchlist.app.data.remote.JikanApiService
-import com.watchlist.app.data.remote.JikanAnimeListResponse
-import com.watchlist.app.data.remote.JikanAnimeListItem
 
 @Singleton
 class MediaRepository @Inject constructor(
     private val dao: MediaItemDao,
     private val tmdbApi: TmdbApiService,
     private val newsApi: NewsApiService,
-    private val jikanApiService: JikanApiService
+    private val jikanApiService: JikanApiService,
+    private val malApi: MalApiService
 ) {
     // ---- Local DB ----
 
@@ -31,31 +34,39 @@ class MediaRepository @Inject constructor(
     fun getAllItems(): Flow<List<MediaItemEntity>> =
         dao.getAllItems()
 
+    /** Una sola lectura sin Flow — usado para exportar backup */
+    suspend fun getAllItemsOnce(): List<MediaItemEntity> =
+        dao.getAllItemsOnce()
+
     fun searchItems(query: String): Flow<List<MediaItemEntity>> =
         dao.searchItems(query)
 
-    suspend fun insertItem(item: MediaItemEntity): Long = dao.insertItem(item)
+    suspend fun insertItem(item: MediaItemEntity): Long =
+        dao.insertItem(item)
+
+    /** Inserta en lote con REPLACE — usado para importar backup/MAL */
+    suspend fun insertAll(items: List<MediaItemEntity>) =
+        dao.insertAll(items)
 
     suspend fun updateItem(item: MediaItemEntity) =
         dao.updateItem(item.copy(updatedAt = System.currentTimeMillis()))
 
-    suspend fun deleteItem(item: MediaItemEntity) = dao.deleteItem(item)
+    suspend fun deleteItem(item: MediaItemEntity) =
+        dao.deleteItem(item)
 
-    suspend fun getItemById(id: Long): MediaItemEntity? = dao.getItemById(id)
+    suspend fun getItemById(id: Long): MediaItemEntity? =
+        dao.getItemById(id)
 
     // ---- TMDB Remote ----
 
     suspend fun searchMulti(query: String): List<TmdbMedia> =
-        runCatching { tmdbApi.searchMulti(query).results }
-            .getOrDefault(emptyList())
+        runCatching { tmdbApi.searchMulti(query).results }.getOrDefault(emptyList())
 
     suspend fun searchMovies(query: String): List<TmdbMedia> =
-        runCatching { tmdbApi.searchMovies(query).results }
-            .getOrDefault(emptyList())
+        runCatching { tmdbApi.searchMovies(query).results }.getOrDefault(emptyList())
 
     suspend fun searchTv(query: String): List<TmdbMedia> =
-        runCatching { tmdbApi.searchTv(query).results }
-            .getOrDefault(emptyList())
+        runCatching { tmdbApi.searchTv(query).results }.getOrDefault(emptyList())
 
     suspend fun getTrendingAll(): List<TmdbMedia> {
         val movies = runCatching { tmdbApi.getTrendingMovies().results }.getOrDefault(emptyList())
@@ -69,60 +80,53 @@ class MediaRepository @Inject constructor(
     suspend fun getUpcomingTv(): List<TmdbRelease> =
         runCatching { tmdbApi.getUpcomingTv().results }.getOrDefault(emptyList())
 
+    suspend fun getTvDetails(tvId: Int): TmdbTvDetails? =
+        runCatching { tmdbApi.getTvDetails(tvId) }.getOrNull()
+
     // ---- News Remote ----
 
     suspend fun getEntertainmentNews(): List<NewsArticle> =
-        runCatching { newsApi.getEntertainmentNews().articles }
-            .getOrDefault(emptyList())
+        runCatching { newsApi.getEntertainmentNews().articles }.getOrDefault(emptyList())
+
+    // ---- MyAnimeList (Jikan) ----
 
     suspend fun importFromMyAnimeList(username: String) {
-        try {
-            var hasNextPage = true
-            var currentPage = 1
-            val allItems = mutableListOf<JikanAnimeListItem>()
+        var hasNextPage = true
+        var currentPage = 1
+        val allItems = mutableListOf<JikanAnimeListItem>()
 
-            // Paginación: Bajamos de a páginas hasta que Jikan diga que no hay más
-            while (hasNextPage) {
-                val response = jikanApiService.getUserAnimeList(username, currentPage)
-                allItems.addAll(response.data)
-                
-                hasNextPage = response.pagination?.hasNextPage == true
-                if (hasNextPage) {
-                    currentPage++
-                    kotlinx.coroutines.delay(400) // Delay de seguridad para no saturar la API
-                }
+        while (hasNextPage) {
+            val response = jikanApiService.getUserAnimeList(username, currentPage)
+            allItems.addAll(response.data)
+            hasNextPage = response.pagination?.hasNextPage == true
+            if (hasNextPage) {
+                currentPage++
+                kotlinx.coroutines.delay(400)
             }
+        }
 
-            val entitiesToInsert = allItems.map { item ->
-                val mappedStatus = when (item.status) {
+        val entities = allItems.map { item ->
+            MediaItemEntity(
+                title = item.anime.title,
+                posterPath = item.anime.images.jpg.imageUrl,
+                mediaType = MediaType.ANIME,
+                watchStatus = when (item.status) {
                     1 -> WatchStatus.WATCHING
                     2 -> WatchStatus.COMPLETED
                     else -> WatchStatus.PLANNED
-                }
-
-                MediaItemEntity(
-                    title = item.anime.title,
-                    posterPath = item.anime.images.jpg.imageUrl,
-                    mediaType = MediaType.ANIME,
-                    watchStatus = mappedStatus,
-                    rating = (item.score / 2.0f),
-                    totalEpisodes = item.anime.totalEpisodes ?: 0,
-                    watchedEpisodes = item.episodesWatched,
-                    year = item.anime.year ?: 0,
-                    tmdbId = item.anime.malId 
-                )
-            }
-
-            entitiesToInsert.forEach { dao.insertItem(it) }
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-            throw e 
+                },
+                rating = (item.score / 2.0f),
+                totalEpisodes = item.anime.totalEpisodes ?: 0,
+                watchedEpisodes = item.episodesWatched,
+                year = item.anime.year ?: 0,
+                tmdbId = item.anime.malId
+            )
         }
+        dao.insertAll(entities)
     }
 
-    suspend fun searchJikanAnime(query: String): List<TmdbMedia> {
-        return try {
+    suspend fun searchJikanAnime(query: String): List<TmdbMedia> =
+        runCatching {
             val response = jikanApiService.searchAnime(query)
             response.data.map { anime ->
                 TmdbMedia(
@@ -132,17 +136,23 @@ class MediaRepository @Inject constructor(
                     originalTitle = anime.title,
                     originalName = anime.title,
                     posterPath = anime.images.jpg.imageUrl,
-                    backdropPath = null, // Rellenamos el hueco
-                    mediaType = "anime", 
+                    backdropPath = null,
+                    mediaType = "anime",
                     firstAirDate = anime.year?.toString() ?: "",
                     releaseDate = anime.year?.toString() ?: "",
                     overview = "",
-                    voteAverage = 0.0,    // Rellenamos el hueco
-                    genreIds = emptyList() // Rellenamos el hueco
+                    voteAverage = 0.0,
+                    genreIds = emptyList(),
+                    totalEpisodes = anime.totalEpisodes
                 )
             }
+        }.getOrDefault(emptyList())
+
+    suspend fun exchangeMalCodeForToken(clientId: String, code: String, verifier: String): MalTokenResponse? {
+        return try {
+            malApi.getAccessToken(clientId, code, verifier)
         } catch (e: Exception) {
-            emptyList()
+            null
         }
     }
 }

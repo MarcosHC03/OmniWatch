@@ -75,7 +75,7 @@ fun AddMediaScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // ---- Barra de búsqueda TMDB ----
+            // ---- Barra de búsqueda ----
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -86,7 +86,9 @@ fun AddMediaScreen(
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it },
-                    placeholder = { Text("Buscar en TMDB...") },
+                    placeholder = {
+                        Text(if (state.mediaType == MediaType.ANIME) "Buscar en MyAnimeList..." else "Buscar en TMDB...")
+                    },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -277,9 +279,12 @@ private fun EpisodesSection(
 
             // Episodios vistos
             OutlinedTextField(
-                value = if (state.watchedEpisodes > 0 || state.watchStatus == WatchStatus.WATCHING)
-                    state.watchedEpisodes.toString() else "",
-                onValueChange = { onWatchedEpisodesChange(it.toIntOrNull() ?: 0) },
+                value = if (state.watchedEpisodes == 0) "" else state.watchedEpisodes.toString(),
+                onValueChange = { newValue ->
+                    // Filtramos para que solo acepte números y evite crasheos
+                    val cleanText = newValue.filter { it.isDigit() }
+                    onWatchedEpisodesChange(if (cleanText.isEmpty()) 0 else cleanText.toInt())
+                },
                 label = { Text("Eps. vistos") },
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -289,23 +294,16 @@ private fun EpisodesSection(
                 isError = state.watchedEpisodesError,
                 supportingText = if (state.watchedEpisodesError) {
                     { Text("Mayor al total", color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
-                } else null,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = if (state.watchedEpisodesError)
-                        MaterialTheme.colorScheme.error
-                    else
-                        MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = if (state.watchedEpisodesError)
-                        MaterialTheme.colorScheme.error
-                    else
-                        MaterialTheme.colorScheme.outline
-                )
+                } else null
             )
 
             // Total de episodios
             OutlinedTextField(
-                value = if (state.totalEpisodes > 0) state.totalEpisodes.toString() else "",
-                onValueChange = { onTotalEpisodesChange(it.toIntOrNull() ?: 0) },
+                value = if (state.totalEpisodes == 0) "" else state.totalEpisodes.toString(),
+                onValueChange = { newValue ->
+                    val cleanText = newValue.filter { it.isDigit() }
+                    onTotalEpisodesChange(if (cleanText.isEmpty()) 0 else cleanText.toInt())
+                },
                 label = { Text("Total eps.") },
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

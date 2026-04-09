@@ -7,6 +7,7 @@ import com.watchlist.app.data.local.WatchListDatabase
 import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
+import com.watchlist.app.data.remote.MalApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -112,4 +113,13 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(JikanApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideMalApiService(): MalApiService =
+        Retrofit.Builder()
+            .baseUrl("https://myanimelist.net/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(MalApiService::class.java)
 }

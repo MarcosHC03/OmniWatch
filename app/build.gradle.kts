@@ -29,6 +29,8 @@ android {
         buildConfigField("String", "TMDB_API_KEY", "\"${localProperties.getProperty("TMDB_API_KEY")}\"")
         // NewsAPI Key - reemplazá con tu key de https://newsapi.org/
         buildConfigField("String", "NEWS_API_KEY", "\"${localProperties.getProperty("NEWS_API_KEY")}\"")
+        // MAL API Key - remplazá con tu key de https://myanimelist.net/apiconfig
+        buildConfigField("String", "MAL_CLIENT_ID", "\"${localProperties.getProperty("MAL_CLIENT_ID")}\"")
     }
 
     buildTypes {

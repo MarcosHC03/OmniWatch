@@ -1,85 +1,101 @@
 package com.watchlist.app.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonSyntaxException
+import com.google.gson.reflect.TypeToken
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
 import com.watchlist.app.data.repository.MediaRepository
+import com.watchlist.app.BuildConfig
+import com.watchlist.app.utils.AuthUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import android.content.Intent
 
 data class MyListUiState(
     val items: List<MediaItemEntity> = emptyList(),
     val selectedTab: MediaType = MediaType.SERIES,
     val filterStatus: WatchStatus? = null,
     val searchQuery: String = "",
-    val isLoading: Boolean = false,
 
-    // Estado de importación MAL
+    // MAL
     val isImporting: Boolean = false,
     val importSuccessMessage: String? = null,
-    val importErrorMessage: String? = null
+    val importErrorMessage: String? = null,
+
+    // Backup
+    val isBackupProcessing: Boolean = false,
+    val backupSuccessMessage: String? = null,
+    val backupErrorMessage: String? = null
+)
+
+// Estado interno compacto para evitar el límite de 5 args en combine()
+private data class InternalState(
+    val tab: MediaType = MediaType.SERIES,
+    val status: WatchStatus? = null,
+    val query: String = "",
+    val isImporting: Boolean = false,
+    val importSuccess: String? = null,
+    val importError: String? = null,
+    val isBackupProcessing: Boolean = false,
+    val backupSuccess: String? = null,
+    val backupError: String? = null
 )
 
 @HiltViewModel
 class MyListViewModel @Inject constructor(
-    private val repository: MediaRepository
+    private val repository: MediaRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    private val _selectedTab = MutableStateFlow(MediaType.SERIES)
-    private val _filterStatus = MutableStateFlow<WatchStatus?>(null)
-    private val _searchQuery = MutableStateFlow("")
-    private val _importState = MutableStateFlow(
-        Triple(false, null as String?, null as String?) // isImporting, successMsg, errorMsg
-    )
+    private val gson = GsonBuilder().setPrettyPrinting().create()
+
+    private val _state = MutableStateFlow(InternalState())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<MyListUiState> = combine(
-        _selectedTab,
-        _filterStatus,
-        _searchQuery,
-        _importState
-    ) { tab, status, query, importTriple ->
-        object {
-            val tab = tab
-            val status = status
-            val query = query
-            val isImporting = importTriple.first
-            val successMsg = importTriple.second
-            val errorMsg = importTriple.third
+    val uiState: StateFlow<MyListUiState> = _state
+        .flatMapLatest { s ->
+            val itemsFlow = if (s.query.isBlank()) {
+                if (s.status != null)
+                    repository.getItemsByType(s.tab)
+                        .map { list -> list.filter { it.watchStatus == s.status } }
+                else
+                    repository.getItemsByType(s.tab)
+            } else {
+                repository.searchItems(s.query)
+                    .map { list -> list.filter { it.mediaType == s.tab } }
+            }
+            itemsFlow.map { items ->
+                MyListUiState(
+                    items = items,
+                    selectedTab = s.tab,
+                    filterStatus = s.status,
+                    searchQuery = s.query,
+                    isImporting = s.isImporting,
+                    importSuccessMessage = s.importSuccess,
+                    importErrorMessage = s.importError,
+                    isBackupProcessing = s.isBackupProcessing,
+                    backupSuccessMessage = s.backupSuccess,
+                    backupErrorMessage = s.backupError
+                )
+            }
         }
-    }.flatMapLatest { params ->
-        val itemsFlow = if (params.query.isBlank()) {
-            if (params.status != null)
-                repository.getItemsByType(params.tab)
-                    .map { list -> list.filter { it.watchStatus == params.status } }
-            else
-                repository.getItemsByType(params.tab)
-        } else {
-            repository.searchItems(params.query)
-                .map { list -> list.filter { it.mediaType == params.tab } }
-        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MyListUiState())
 
-        itemsFlow.map { items ->
-            MyListUiState(
-                items = items,
-                selectedTab = params.tab,
-                filterStatus = params.status,
-                searchQuery = params.query,
-                isImporting = params.isImporting,
-                importSuccessMessage = params.successMsg,
-                importErrorMessage = params.errorMsg
-            )
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MyListUiState())
+    // ---- Tabs / filtros / búsqueda ----
 
-    fun selectTab(type: MediaType) { _selectedTab.value = type }
-    fun setFilter(status: WatchStatus?) { _filterStatus.value = status }
-    fun setSearch(query: String) { _searchQuery.value = query }
+    fun selectTab(type: MediaType) { _state.update { it.copy(tab = type) } }
+    fun setFilter(status: WatchStatus?) { _state.update { it.copy(status = status) } }
+    fun setSearch(query: String) { _state.update { it.copy(query = query) } }
 
     fun deleteItem(item: MediaItemEntity) {
         viewModelScope.launch { repository.deleteItem(item) }
@@ -90,35 +106,137 @@ class MyListViewModel @Inject constructor(
     }
 
     // ---- Importación desde MyAnimeList ----
+    // ---- Autenticación Oficial MAL (OAuth2) ----
+    fun startMalLogin() {
+        // 1. Generamos y guardamos la contraseña temporal
+        val verifier = AuthUtils.generateAndSaveVerifier(context)
+        val clientId = BuildConfig.MAL_CLIENT_ID
 
-    fun importFromMyAnimeList(username: String) {
-        if (username.isBlank()) return
+        // 2. Armamos la URL oficial que exige MyAnimeList
+        val url = "https://myanimelist.net/v1/oauth2/authorize" +
+                "?response_type=code" +
+                "&client_id=$clientId" +
+                "&code_challenge=$verifier" +
+                "&code_challenge_method=plain"
+
+        // 3. Abrimos el navegador
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+    
+    init {
+        // Nos quedamos escuchando el tubo secreto
         viewModelScope.launch {
-            _importState.value = Triple(true, null, null)
-            try {
-                repository.importFromMyAnimeList(username)
-                // Después de importar, cambiar el tab a ANIME para mostrar los resultados
-                _selectedTab.value = MediaType.ANIME
-                _importState.value = Triple(
-                    false,
-                    "Lista de $username importada correctamente",
-                    null
-                )
-            } catch (e: Exception) {
-                val msg = when {
-                    e.message?.contains("404") == true ->
-                        "Usuario \"$username\" no encontrado en MyAnimeList"
-                    e.message?.contains("network") == true ||
-                    e.message?.contains("connect") == true ->
-                        "Sin conexión. Revisá tu internet e intentá de nuevo"
-                    else -> "No se pudo importar la lista. Intentá de nuevo"
-                }
-                _importState.value = Triple(false, null, msg)
+            AuthUtils.authCodeFlow.collect { authCode ->
+                processMalAuthCode(authCode)
             }
         }
     }
 
+    private fun processMalAuthCode(authCode: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isImporting = true, importSuccess = null, importError = null) }
+            
+            val verifier = AuthUtils.getSavedVerifier(context)
+            if (verifier == null) {
+                _state.update { it.copy(isImporting = false, importError = "Error de seguridad local") }
+                return@launch
+            }
+
+            val clientId = BuildConfig.MAL_CLIENT_ID
+            val response = repository.exchangeMalCodeForToken(clientId, authCode, verifier)
+
+            if (response != null) {
+                // ¡ÉXITO! GUARDAMOS EL PASE VIP EN LA BÓVEDA
+                AuthUtils.saveAccessToken(context, response.accessToken)
+                _state.update { it.copy(isImporting = false, importSuccess = "¡Conexión exitosa con MyAnimeList!") }
+            } else {
+                _state.update { it.copy(isImporting = false, importError = "No se pudo validar el código con MAL") }
+            }
+        }
+    }
+
+    // ---- Backup: Exportar a JSON ----
+
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
+            try {
+                val allItems = repository.getAllItemsOnce()
+                if (allItems.isEmpty()) {
+                    _state.update { it.copy(
+                        isBackupProcessing = false,
+                        backupError = "No hay elementos para exportar"
+                    ) }
+                    return@launch
+                }
+                val json = gson.toJson(allItems)
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                } ?: throw Exception("No se pudo abrir el archivo de destino")
+
+                val count = allItems.size
+                _state.update { it.copy(
+                    isBackupProcessing = false,
+                    backupSuccess = "✓ Exportados $count elemento${if (count != 1) "s" else ""}"
+                ) }
+            } catch (e: Exception) {
+                _state.update { it.copy(
+                    isBackupProcessing = false,
+                    backupError = "Error al exportar: ${e.message ?: "error desconocido"}"
+                ) }
+            }
+        }
+    }
+
+    // ---- Backup: Importar desde JSON ----
+
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
+            try {
+                val json = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader(Charsets.UTF_8)
+                    ?.use { it.readText() }
+                    ?: throw Exception("No se pudo abrir el archivo seleccionado")
+
+                if (json.isBlank()) throw Exception("El archivo está vacío")
+
+                val listType = object : TypeToken<List<MediaItemEntity>>() {}.type
+                val items: List<MediaItemEntity> = gson.fromJson(json, listType)
+                    ?: throw Exception("Formato de backup inválido")
+
+                if (items.isEmpty()) throw Exception("El backup no contiene elementos")
+
+                // REPLACE: actualiza registros con IDs coincidentes, agrega los nuevos
+                repository.insertAll(items)
+
+                val count = items.size
+                _state.update { it.copy(
+                    isBackupProcessing = false,
+                    backupSuccess = "✓ Importados $count elemento${if (count != 1) "s" else ""}"
+                ) }
+            } catch (e: JsonSyntaxException) {
+                _state.update { it.copy(
+                    isBackupProcessing = false,
+                    backupError = "El archivo no es un backup válido de OmniWatch"
+                ) }
+            } catch (e: Exception) {
+                _state.update { it.copy(
+                    isBackupProcessing = false,
+                    backupError = "Error al importar: ${e.message ?: "error desconocido"}"
+                ) }
+            }
+        }
+    }
+
+    fun clearBackupMessages() {
+        _state.update { it.copy(backupSuccess = null, backupError = null) }
+    }
+
     fun clearImportMessages() {
-        _importState.value = Triple(false, null, null)
+        _state.update { it.copy(importSuccess = null, importError = null) }
     }
 }

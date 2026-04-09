@@ -102,8 +102,8 @@ class AddMediaViewModel @Inject constructor(
             "tv" -> MediaType.SERIES
             else -> _uiState.value.mediaType
         }
-        // En el futuro se puede hacer un call a /tv/{id} para obtener number_of_seasons
-        // y episode_run_time por temporada. Por ahora reseteamos la info de temporadas.
+        
+        // 1. Actualizamos la UI rápido con lo básico
         _uiState.value = _uiState.value.copy(
             title = media.displayTitle,
             overview = media.overview ?: "",
@@ -114,11 +114,34 @@ class AddMediaViewModel @Inject constructor(
             availableSeasons = 0,
             episodesPerSeason = emptyMap(),
             currentSeason = 1,
-            totalEpisodes = 0,
+            totalEpisodes = media.totalEpisodes ?: 0, // Esto ataja a los Animes
             watchedEpisodes = 0,
             watchedEpisodesError = false,
             searchResults = emptyList()
         )
+
+        // 2. Si es una Serie, hacemos la segunda llamada a TMDB
+        if (type == MediaType.SERIES) {
+            viewModelScope.launch {
+                val details = repository.getTvDetails(media.id)
+                if (details != null) {
+                    // Filtramos la temporada 0 (Especiales/Extras)
+                    val validSeasons = details.seasons.filter { it.seasonNumber > 0 }
+                    // Armamos el diccionario {Temporada -> Cantidad de Eps}
+                    val episodesMap = validSeasons.associate { it.seasonNumber to it.episodeCount }
+                    val availableSeasonsCount = validSeasons.size
+                    
+                    // Seleccionamos la temporada 1 por defecto
+                    val firstSeasonEpisodes = episodesMap[1] ?: 0
+
+                    _uiState.value = _uiState.value.copy(
+                        availableSeasons = availableSeasonsCount,
+                        episodesPerSeason = episodesMap,
+                        totalEpisodes = firstSeasonEpisodes
+                    )
+                }
+            }
+        }
     }
 
     fun clearSearch() {

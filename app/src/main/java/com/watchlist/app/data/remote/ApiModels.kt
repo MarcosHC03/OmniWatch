@@ -23,7 +23,8 @@ data class TmdbMedia(
     @SerializedName("first_air_date") val firstAirDate: String?,
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("media_type") val mediaType: String?,
-    @SerializedName("genre_ids") val genreIds: List<Int>?
+    @SerializedName("genre_ids") val genreIds: List<Int>?,
+    val totalEpisodes: Int? = null
 ) {
     val displayTitle get() = title ?: name ?: ""
     val displayOriginalTitle get() = originalTitle ?: originalName ?: ""
@@ -75,4 +76,14 @@ data class NewsArticle(
 data class NewsSource(
     val id: String?,
     val name: String
+)
+
+data class TmdbTvDetails(
+    @SerializedName("number_of_seasons") val numberOfSeasons: Int,
+    val seasons: List<TmdbSeason>
+)
+
+data class TmdbSeason(
+    @SerializedName("season_number") val seasonNumber: Int,
+    @SerializedName("episode_count") val episodeCount: Int
 )
