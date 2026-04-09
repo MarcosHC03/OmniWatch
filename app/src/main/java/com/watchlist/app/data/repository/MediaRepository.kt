@@ -1,6 +1,7 @@
 package com.watchlist.app.data.repository
 
 import com.watchlist.app.data.local.dao.MediaItemDao
+import com.watchlist.app.data.local.dao.NewsDao
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
@@ -14,6 +15,9 @@ import com.watchlist.app.data.remote.JikanApiService
 import com.watchlist.app.data.remote.JikanAnimeListItem
 import com.watchlist.app.data.remote.MalApiService
 import com.watchlist.app.data.remote.MalTokenResponse
+import com.watchlist.app.data.remote.RssApiService
+import com.watchlist.app.data.remote.RssParser
+import com.watchlist.app.data.local.entities.NewsArticleEntity
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +28,10 @@ class MediaRepository @Inject constructor(
     private val tmdbApi: TmdbApiService,
     private val newsApi: NewsApiService,
     private val jikanApiService: JikanApiService,
-    private val malApi: MalApiService
+    private val malApi: MalApiService,
+    private val malDataApi: com.watchlist.app.data.remote.MalDataApiService,
+    private val newsDao: NewsDao,
+    private val rssApi: RssApiService
 ) {
     // ---- Local DB ----
 
@@ -153,6 +160,74 @@ class MediaRepository @Inject constructor(
             malApi.getAccessToken(clientId, code, verifier)
         } catch (e: Exception) {
             null
+        }
+    }
+
+    // Descarga la lista oficial y la guarda en la base de datos
+    suspend fun syncOfficialMalList(accessToken: String) {
+        // 1. Llamamos a la API con el Pase VIP
+        val response = malDataApi.getMyAnimeList("Bearer $accessToken")
+
+        // 2. Traducimos los objetos de MAL a los nuestros
+        val entities = response.data.map { item ->
+            MediaItemEntity(
+                tmdbId = item.node.id, // Guardamos el ID de MAL acá por ahora
+                title = item.node.title,
+                posterPath = item.node.mainPicture?.large ?: item.node.mainPicture?.medium ?: "",
+                mediaType = MediaType.ANIME,
+                watchStatus = when (item.list_status.status) {
+                    "watching" -> WatchStatus.WATCHING
+                    "completed" -> WatchStatus.COMPLETED
+                    else -> WatchStatus.PLANNED // plan_to_watch, on_hold, dropped
+                },
+                rating = (item.list_status.score / 2.0f), // MAL puntúa del 1-10, nosotros de 1-5 estrellas
+                totalEpisodes = item.node.numEpisodes,
+                watchedEpisodes = item.list_status.numEpisodesWatched,
+                platform = "MyAnimeList"
+            )
+        }
+
+        // 3. Guardamos todo junto en la base de datos (REPLACE actualiza los que ya existen)
+        dao.insertAll(entities)
+    }
+
+    // 1. El tubo directo a la base de datos (Esto carga al instante)
+    val localNewsFlow = newsDao.getAllNews()
+
+    suspend fun refreshNewsFromRss() {
+        try {
+            // 1. Armamos nuestra lista de diarios a la carta
+            val feeds = listOf(
+                Pair("https://somoskudasai.com/feed/", "SomosKudasai"), // Anime
+                Pair("https://www.espinof.com/feed", "Espinof") // Películas y Series
+            )
+            
+            val allArticles = mutableListOf<NewsArticleEntity>()
+
+            // 2. Pasamos a recolectar por cada diario
+            for ((url, sourceName) in feeds) {
+                try {
+                    val xmlData = rssApi.getRssFeed(url)
+                    val articles = RssParser.parse(xmlData, sourceName)
+                    allArticles.addAll(articles)
+                } catch (e: Exception) {
+                    // Si un diario falla (ej. Espinof está caído), imprimimos el error 
+                    // pero dejamos que el ciclo 'for' siga con el próximo.
+                    e.printStackTrace()
+                }
+            }
+
+            // 3. Si recolectamos aunque sea 1 noticia, actualizamos la caché
+            if (allArticles.isNotEmpty()) {
+                // Mezclamos un poco la lista para que no queden todas las de un diario arriba
+                allArticles.shuffle() 
+                
+                newsDao.clearAllNews()
+                newsDao.insertNews(allArticles)
+            }
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

@@ -8,6 +8,7 @@ import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.MalApiService
+import com.watchlist.app.data.remote.RssApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,6 +19,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.converter.scalars.ScalarsConverterFactory
 import javax.inject.Named
 import javax.inject.Singleton
 import com.watchlist.app.data.remote.JikanApiService
@@ -35,6 +37,17 @@ object AppModule {
 
     @Provides
     fun provideMediaItemDao(db: WatchListDatabase): MediaItemDao = db.mediaItemDao()
+    
+    @Provides
+    fun provideNewsDao(db: WatchListDatabase): com.watchlist.app.data.local.dao.NewsDao = db.newsDao()
+    //@Provides
+    //fun provideRssApiService(): RssApiService =
+    //    Retrofit.Builder()
+    //        .baseUrl("https://www.animenewsnetwork.com/")
+    //        .addConverterFactory(ScalarsConverterFactory.create())
+    //        .build()
+    //        .create(RssApiService::class.java)
+
 
     // ---- OkHttp ----
 
@@ -122,4 +135,22 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(MalApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideMalDataApiService(): com.watchlist.app.data.remote.MalDataApiService =
+        Retrofit.Builder()
+            .baseUrl("https://api.myanimelist.net/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(com.watchlist.app.data.remote.MalDataApiService::class.java)
+    
+    @Provides
+    @Singleton
+    fun provideRssApiService(): RssApiService =
+        Retrofit.Builder()
+            .baseUrl("https://dummy.com/") // La URL base no importa porque pasamos la URL completa en el GET
+            .addConverterFactory(ScalarsConverterFactory.create()) // <-- Magia para leer XML
+            .build()
+            .create(RssApiService::class.java)
 }

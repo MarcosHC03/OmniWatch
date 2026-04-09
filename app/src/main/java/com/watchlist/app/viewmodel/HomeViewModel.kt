@@ -2,7 +2,6 @@ package com.watchlist.app.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.watchlist.app.data.remote.NewsArticle
 import com.watchlist.app.data.remote.TmdbMedia
 import com.watchlist.app.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,7 +11,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HomeUiState(
-    val news: List<NewsArticle> = emptyList(),
+    val news: List<com.watchlist.app.data.local.entities.NewsArticleEntity> = emptyList(),
     val trending: List<TmdbMedia> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null
@@ -28,15 +27,30 @@ class HomeViewModel @Inject constructor(
 
     init {
         loadContent()
+
+        // 1. Nos quedamos escuchando la cisterna (Base de datos) para siempre
+        viewModelScope.launch {
+            repository.localNewsFlow.collect { newsList ->
+                // Corregido: _uiState con 'S' mayúscula
+                _uiState.value = _uiState.value.copy(news = newsList)
+            }
+        }
+
+        // 2. Mandamos a buscar agua nueva a la manguera (RSS) en segundo plano
+        viewModelScope.launch {
+            repository.refreshNewsFromRss()
+        }
     }
 
     fun loadContent() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val news = repository.getEntertainmentNews()
+                // Solo traemos las películas en tendencia
                 val trending = repository.getTrendingAll()
-                _uiState.value = HomeUiState(news = news, trending = trending, isLoading = false)
+                
+                // Usamos .copy() para actualizar solo el trending y que no se borren las noticias
+                _uiState.value = _uiState.value.copy(trending = trending, isLoading = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,

@@ -134,7 +134,7 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "Sin noticias disponibles.\nConfigurá tu NewsAPI key en build.gradle.",
+                                "Buscando noticias en la red...",
                                 color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
                                 fontSize = 13.sp
                             )
@@ -182,7 +182,7 @@ fun TrendingCard(media: TmdbMedia, onClick: () -> Unit) {
 }
 
 @Composable
-fun NewsCard(article: NewsArticle) {
+fun NewsCard(article: com.watchlist.app.data.local.entities.NewsArticleEntity) {
     val uriHandler = LocalUriHandler.current
 
     Card(
@@ -212,7 +212,7 @@ fun NewsCard(article: NewsArticle) {
                     .padding(10.dp)
             ) {
                 Text(
-                    text = article.source.name,
+                    text = article.source,
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
@@ -228,7 +228,7 @@ fun NewsCard(article: NewsArticle) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = formatDate(article.publishedAt),
+                    text = android.text.format.DateUtils.getRelativeTimeSpanString(article.publishedAt).toString(),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(0.5f)
                 )

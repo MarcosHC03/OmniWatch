@@ -145,15 +145,27 @@ class MyListViewModel @Inject constructor(
                 return@launch
             }
 
-            val clientId = BuildConfig.MAL_CLIENT_ID
-            val response = repository.exchangeMalCodeForToken(clientId, authCode, verifier)
+            try {
+                val clientId = BuildConfig.MAL_CLIENT_ID
+                // 1. Canjeamos el ticket por el Pase VIP
+                val response = repository.exchangeMalCodeForToken(clientId, authCode, verifier)
 
-            if (response != null) {
-                // ¡ÉXITO! GUARDAMOS EL PASE VIP EN LA BÓVEDA
-                AuthUtils.saveAccessToken(context, response.accessToken)
-                _state.update { it.copy(isImporting = false, importSuccess = "¡Conexión exitosa con MyAnimeList!") }
-            } else {
-                _state.update { it.copy(isImporting = false, importError = "No se pudo validar el código con MAL") }
+                if (response != null) {
+                    AuthUtils.saveAccessToken(context, response.accessToken)
+                    
+                    // 2. ¡NUEVO! Con el Pase VIP en mano, descargamos los animes
+                    repository.syncOfficialMalList(response.accessToken)
+                    
+                    _state.update { it.copy(
+                        isImporting = false, 
+                        tab = MediaType.ANIME, // Cambiamos a la pestaña Anime automáticamente
+                        importSuccess = "¡Lista importada con éxito desde MyAnimeList!"
+                    ) }
+                } else {
+                    _state.update { it.copy(isImporting = false, importError = "No se pudo validar el código con MAL") }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isImporting = false, importError = "Error descargando la lista: ${e.message}") }
             }
         }
     }

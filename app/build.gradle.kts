@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.coil.compose)
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+    implementation("com.squareup.retrofit2:converter-scalars:2.9.0")
 
     debugImplementation(libs.androidx.ui.tooling)
 }
