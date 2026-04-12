@@ -18,14 +18,17 @@ data class MediaItemEntity(
     val overview: String = "",
     val mediaType: MediaType,
     val watchStatus: WatchStatus,
-    val rating: Float = 0f,           // 0 a 5 estrellas
-    val totalEpisodes: Int = 0,       // Para series y anime
-    val watchedEpisodes: Int = 0,     // Para series y anime
+    val rating: Float = 0f,
+    val totalEpisodes: Int = 0,
+    val watchedEpisodes: Int = 0,
     val currentSeason: Int = 1,
     val genre: String = "",
     val year: Int = 0,
-    val platform: String = "",        // Netflix, HBO, etc.
+    val platform: String = "",
     val tmdbId: Int = 0,
     val addedAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val airDayOfWeek: Int = 0,       // 0 = sin asignar, 1 = Lunes … 7 = Domingo (ISO-8601)
+    val releaseDate: String = "",    // Formato dd/MM/yyyy — vacío si se desconoce
+    val isAiring: Boolean = false    // true = en emisión activa, false = finalizado/sin dato
 )

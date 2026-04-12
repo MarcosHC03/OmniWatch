@@ -199,7 +199,8 @@ class MediaRepository @Inject constructor(
             // 1. Armamos nuestra lista de diarios a la carta
             val feeds = listOf(
                 Pair("https://somoskudasai.com/feed/", "SomosKudasai"), // Anime
-                Pair("https://www.espinof.com/feed", "Espinof") // Películas y Series
+                Pair("https://codigoespagueti.com/feed/", "Código Espagueti"), // Mix de Series, Cine y Geek
+                Pair("https://www.cinepremiere.com.mx/feed/", "Cine PREMIERE") // Especialistas en Cine y Series
             )
             
             val allArticles = mutableListOf<NewsArticleEntity>()
@@ -219,11 +220,14 @@ class MediaRepository @Inject constructor(
 
             // 3. Si recolectamos aunque sea 1 noticia, actualizamos la caché
             if (allArticles.isNotEmpty()) {
-                // Mezclamos un poco la lista para que no queden todas las de un diario arriba
-                allArticles.shuffle() 
+                // Mezclamos la lista y le asignamos una hora secuencial falsa para que la base de datos respete nuestra mezcla al ordenarlas por fecha
+                val timeNow = System.currentTimeMillis()
+                val mixedArticles = allArticles.shuffled().mapIndexed { index, article ->
+                    article.copy(publishedAt = timeNow - index) 
+                }
                 
                 newsDao.clearAllNews()
-                newsDao.insertNews(allArticles)
+                newsDao.insertNews(mixedArticles)
             }
             
         } catch (e: Exception) {

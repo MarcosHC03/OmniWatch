@@ -1,82 +1,83 @@
-# WatchList App 🎬
+<p align="center">
+  <img src="assets/omniwatch-logo.png" alt="Logo de OmniWatch" width="200"/>
+</p>
 
-App Android en Kotlin + Jetpack Compose para gestionar tu lista de películas, series y anime.
+# OmniWatch 🎬 (v1.0)
 
-## Características
-- **Home**: Noticias de entretenimiento + tendencias de la semana (vía NewsAPI y TMDB)
-- **Mi lista**: Tus títulos organizados en Series / Películas / Anime
-  - Estado: Viendo / Visto / Por ver
-  - Puntaje de 1 a 5 estrellas
-  - Seguimiento de episodios y temporada (series y anime)
-  - Plataforma de streaming
-  - Buscador y filtros
-- **Estrenos**: Próximos lanzamientos agrupados por mes
+App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de películas, series y anime de forma privada y sin depender de servicios de terceros.
 
-## Stack técnico
-- Kotlin + Jetpack Compose (UI declarativa)
-- Room (base de datos local)
-- Hilt (inyección de dependencias)
-- Retrofit + OkHttp (networking)
-- Coil (carga de imágenes)
-- Navigation Compose
-- MVVM + Repository pattern
+## ✨ Características Principales
 
----
+- **Inicio (Muro de Noticias)**: Feed híbrido de noticias de entretenimiento y cultura geek (Cine PREMIERE, Código Espagueti, SomosKudasai) con soporte de caché para lectura offline.
+- **Mi Lista**: Tu biblioteca personal organizada por Series, Películas y Anime.
+  - Tracking de estado (Viendo / Visto / Por ver) y puntaje.
+  - Seguimiento detallado de episodios y temporadas.
+  - Autocompletado inteligente vía **TMDB** (Series/Cine) y **MyAnimeList/Jikan** (Anime).
+  - Control manual de fechas de estreno y estado de emisión.
+  - **Backup Local**: Exportación e importación de tu lista en formato JSON.
+- **Calendario Inteligente**:
+  - *Pestaña "Viendo"*: Tu agenda semanal (Lunes a Domingo) generada automáticamente para las series en emisión, más tu lista de maratones finalizados.
+  - *Pestaña "Por Ver"*: Línea de tiempo cronológica separando los próximos estrenos de los títulos que ya salieron.
 
-## ⚙️ Configuración antes de compilar
-
-### 1. TMDB API Key (para pósters, búsqueda y estrenos)
-1. Registrate en https://www.themoviedb.org/settings/api (gratis)
-2. Copiá tu **API Read Access Token** (el JWT largo)
-3. En `app/build.gradle.kts`, reemplazá:
-```kotlin
-buildConfigField("String", "TMDB_API_KEY", "\"TU_TMDB_API_KEY_AQUI\"")
-```
-con tu token.
-
-### 2. NewsAPI Key (para noticias en el Home)
-1. Registrate en https://newsapi.org/ (gratis, hasta 100 req/día)
-2. Copiá tu API key
-3. En `app/build.gradle.kts`, reemplazá:
-```kotlin
-buildConfigField("String", "NEWS_API_KEY", "\"TU_NEWS_API_KEY_AQUI\"")
-```
-
-> **Nota**: La app funciona sin las API keys, pero el Home no mostrará noticias
-> ni tendencias, y la búsqueda TMDB no devolverá resultados.
-> La lista personal funciona completamente offline con Room.
+## 🛠 Stack Técnico
+- **UI**: Kotlin + Jetpack Compose (Material Design 3)
+- **Arquitectura**: MVVM + Repository Pattern
+- **Base de Datos**: Room (SQLite offline)
+- **Red**: Retrofit + OkHttp (Consumo de REST APIs y XML/RSS)
+- **Imágenes**: Coil (Carga asíncrona de pósters)
+- **Inyección de Dependencias**: Dagger Hilt
+- **Navegación**: Navigation Compose
 
 ---
 
-## 🚀 Cómo abrir el proyecto
-1. Abrí Android Studio
-2. File → Open → seleccioná la carpeta `WatchListApp`
-3. Esperá que Gradle sincronice (~2-3 min la primera vez)
-4. Configurá las API keys (ver arriba)
-5. Ejecutá en emulador o dispositivo (API 26+)
+## 📦 Descargar e Instalar (APK)
+
+Podés probar la aplicación directamente en tu dispositivo Android (Requiere API 26+).
+1. Ve a la sección de **[Releases](../../releases)** de este repositorio.
+2. Descarga el archivo `OmniWatch-v1.0.apk`.
+3. Instálalo en tu dispositivo (asegúrate de tener habilitada la instalación desde orígenes desconocidos).
 
 ---
 
-## 📁 Estructura del proyecto
+## ⚙️ Configuración para Desarrolladores (Clonar y Compilar)
+
+### 1. Configurar TMDB API Key (Pósters y Autocompletado)
+Para proteger tus credenciales, la app lee las claves desde un archivo local que no se sube a GitHub.
+1. Registrate en https://www.themoviedb.org/settings/api (es gratis).
+2. Copiá tu **API Read Access Token** (el JWT largo).
+3. En la raíz del proyecto, abrí (o creá) el archivo `local.properties`.
+4. Agregá esta línea con tu token (sin comillas ni espacios raros):
+```properties
+TMDB_API_KEY=tu_token_jwt_largo_aqui
 ```
+*(Nota: La API de Jikan para anime es pública y no requiere clave).*
+
+### 2. Abrir el proyecto
+1. Cloná este repositorio.
+2. Abrí Android Studio y seleccioná **File → Open** (buscá la carpeta del proyecto).
+3. Esperá que Gradle sincronice las dependencias.
+4. Ejecutá en el emulador o dispositivo físico.
+
+---
+
+## 📁 Estructura del Proyecto
+```text
 app/src/main/java/com/watchlist/app/
 ├── data/
-│   ├── local/
-│   │   ├── dao/          # MediaItemDao
-│   │   ├── entities/     # MediaItemEntity, enums
-│   │   └── WatchListDatabase.kt
-│   ├── remote/           # ApiModels, TmdbApiService, NewsApiService
-│   └── repository/       # MediaRepository
-├── di/                   # AppModule (Hilt)
-├── navigation/           # Navigation.kt, rutas y bottom nav
+│   ├── local/        # Dao, Entities (Room) y WatchListDatabase
+│   ├── remote/       # Servicios de TMDB, Jikan y RssApiService
+│   └── repository/   # MediaRepository (Single Source of Truth)
+├── di/               # AppModule (Configuración de Hilt)
+├── navigation/       # WatchListNavHost y Bottom Navigation
 ├── ui/
-│   ├── home/             # HomeScreen.kt
-│   ├── mylist/           # MyListScreen.kt
-│   ├── releases/         # ReleasesScreen.kt
-│   ├── addmedia/         # AddMediaScreen.kt
-│   ├── theme/            # Theme.kt, Typography.kt
+│   ├── home/         # Pantalla de Inicio (Noticias RSS)
+│   ├── mylist/       # Pantalla de la biblioteca personal
+│   ├── calendar/     # Calendario Inteligente (Viendo / Por ver)
+│   ├── addmedia/     # Buscador TMDB/MAL y formulario de edición
+│   ├── theme/        # Colores, Tipografía y Tema Compose
 │   └── CommonComponents.kt
-├── viewmodel/            # HomeVM, MyListVM, ReleasesVM, AddMediaVM
+├── viewmodel/        # Lógica de presentación (StateFlow)
+├── utils/            # Utilidades (Import/Export JSON, parseo de fechas)
 ├── MainActivity.kt
 └── WatchListApplication.kt
 ```

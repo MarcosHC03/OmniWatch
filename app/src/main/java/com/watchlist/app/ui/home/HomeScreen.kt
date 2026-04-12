@@ -46,7 +46,7 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("WatchList", fontWeight = FontWeight.Bold)
+                        Text("OmniWatch", fontWeight = FontWeight.Bold)
                         Text(
                             "¿Qué estás mirando hoy?",
                             fontSize = 12.sp,

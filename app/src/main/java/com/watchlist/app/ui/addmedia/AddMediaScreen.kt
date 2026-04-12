@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -75,7 +74,7 @@ fun AddMediaScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // ---- Barra de búsqueda ----
+            // ---- Barra de búsqueda TMDB ----
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -86,16 +85,17 @@ fun AddMediaScreen(
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = { searchText = it },
-                    placeholder = {
-                        Text(if (state.mediaType == MediaType.ANIME) "Buscar en MyAnimeList..." else "Buscar en TMDB...")
+                    placeholder = { 
+                        Text(
+                            if (state.mediaType == MediaType.ANIME) "Buscar en MyAnimeList..." else "Buscar en TMDB..."
+                        )
                     },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     trailingIcon = {
-                        if (state.isSearching) {
+                        if (state.isSearching)
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        }
                     }
                 )
                 IconButton(onClick = { viewModel.searchTmdb(searchText) }) {
@@ -170,8 +170,8 @@ fun AddMediaScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         MediaType.SERIES to "Serie",
-                        MediaType.MOVIE to "Película",
-                        MediaType.ANIME to "Anime"
+                        MediaType.MOVIE  to "Película",
+                        MediaType.ANIME  to "Anime"
                     ).forEach { (type, label) ->
                         FilterChip(
                             selected = state.mediaType == type,
@@ -185,8 +185,8 @@ fun AddMediaScreen(
                 FormLabel("Estado")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
-                        WatchStatus.PLANNED to "Por ver",
-                        WatchStatus.WATCHING to "Viendo",
+                        WatchStatus.PLANNED   to "Por ver",
+                        WatchStatus.WATCHING  to "Viendo",
                         WatchStatus.COMPLETED to "Visto"
                     ).forEach { (status, label) ->
                         FilterChip(
@@ -205,7 +205,7 @@ fun AddMediaScreen(
                     starSize = 32
                 )
 
-                // ---- Campos de episodios (solo para Series y Anime) ----
+                // Episodios (solo Series y Anime)
                 if (state.mediaType != MediaType.MOVIE) {
                     EpisodesSection(
                         state = state,
@@ -213,6 +213,36 @@ fun AddMediaScreen(
                         onTotalEpisodesChange = { viewModel.updateTotalEpisodes(it) },
                         onSeasonChange = { viewModel.updateCurrentSeason(it) }
                     )
+                }
+
+                // ── MISIÓN 3A: Fecha de estreno ──────────────────────────────────────
+                OutlinedTextField(
+                    value = state.releaseDate,
+                    onValueChange = { viewModel.updateReleaseDate(it) },
+                    label = { Text("Fecha de estreno") },
+                    placeholder = { Text("DD/MM/AAAA") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                // ── MISIÓN 3B: Toggle En Emisión / Finalizado ─────────────────────────
+                // Solo visible para Series y Anime (las películas no "están en emisión")
+                if (state.mediaType != MediaType.MOVIE) {
+                    FormLabel("Estado de emisión")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = state.isAiring,
+                            onClick = { viewModel.updateIsAiring(true) },
+                            label = { Text("En emisión", fontSize = 12.sp) }
+                        )
+                        FilterChip(
+                            selected = !state.isAiring,
+                            onClick = { viewModel.updateIsAiring(false) },
+                            label = { Text("Finalizado", fontSize = 12.sp) }
+                        )
+                    }
                 }
 
                 // Plataforma
@@ -255,7 +285,8 @@ fun AddMediaScreen(
     }
 }
 
-// ---- Sección de episodios con toda la lógica condicional ----
+// ---- Sección de episodios ────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EpisodesSection(
@@ -267,24 +298,13 @@ private fun EpisodesSection(
     val isAnime = state.mediaType == MediaType.ANIME
     val watchedDisabled = state.watchStatus == WatchStatus.PLANNED
 
-    // Temporada como Dropdown (solo para SERIES con temporadas conocidas)
-    val showSeasonDropdown = !isAnime && state.availableSeasons > 0
-    // Temporada como input de texto (solo para SERIES sin datos de temporadas)
-    val showSeasonInput = !isAnime && state.availableSeasons == 0
-
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 
-        // ---- Fila superior: eps. vistos + total eps. ----
+        // Fila: eps. vistos + total eps.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-
-            // Episodios vistos
             OutlinedTextField(
                 value = if (state.watchedEpisodes == 0) "" else state.watchedEpisodes.toString(),
-                onValueChange = { newValue ->
-                    // Filtramos para que solo acepte números y evite crasheos
-                    val cleanText = newValue.filter { it.isDigit() }
-                    onWatchedEpisodesChange(if (cleanText.isEmpty()) 0 else cleanText.toInt())
-                },
+                onValueChange = { onWatchedEpisodesChange(it.toIntOrNull() ?: 0) },
                 label = { Text("Eps. vistos") },
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -294,16 +314,17 @@ private fun EpisodesSection(
                 isError = state.watchedEpisodesError,
                 supportingText = if (state.watchedEpisodesError) {
                     { Text("Mayor al total", color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
-                } else null
+                } else null,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = if (state.watchedEpisodesError)
+                        MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = if (state.watchedEpisodesError)
+                        MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                )
             )
-
-            // Total de episodios
             OutlinedTextField(
                 value = if (state.totalEpisodes == 0) "" else state.totalEpisodes.toString(),
-                onValueChange = { newValue ->
-                    val cleanText = newValue.filter { it.isDigit() }
-                    onTotalEpisodesChange(if (cleanText.isEmpty()) 0 else cleanText.toInt())
-                },
+                onValueChange = { onTotalEpisodesChange(it.toIntOrNull() ?: 0) },
                 label = { Text("Total eps.") },
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -312,29 +333,23 @@ private fun EpisodesSection(
             )
         }
 
-        // ---- Temporada ----
+        // Temporada: dropdown si hay datos TMDB, input manual si no, oculto para Anime
         when {
-            // Dropdown con temporadas conocidas (SERIES con datos TMDB)
-            showSeasonDropdown -> {
-                SeasonDropdown(
-                    currentSeason = state.currentSeason,
-                    totalSeasons = state.availableSeasons,
-                    onSeasonSelected = onSeasonChange
-                )
-            }
-            // Input manual (SERIES sin datos de temporadas)
-            showSeasonInput -> {
-                OutlinedTextField(
-                    value = if (state.currentSeason > 0) state.currentSeason.toString() else "",
-                    onValueChange = { onSeasonChange(it.toIntOrNull() ?: 1) },
-                    label = { Text("Temporada") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-            }
-            // Para ANIME: no se muestra nada de temporada (isAnime == true)
+            !isAnime && state.availableSeasons > 0 -> SeasonDropdown(
+                currentSeason = state.currentSeason,
+                totalSeasons = state.availableSeasons,
+                onSeasonSelected = onSeasonChange
+            )
+            !isAnime -> OutlinedTextField(
+                value = if (state.currentSeason > 0) state.currentSeason.toString() else "",
+                onValueChange = { onSeasonChange(it.toIntOrNull() ?: 1) },
+                label = { Text("Temporada") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+            // isAnime == true → no mostramos nada de temporada
         }
     }
 }
@@ -358,12 +373,7 @@ private fun SeasonDropdown(
             onValueChange = {},
             readOnly = true,
             label = { Text("Temporada") },
-            trailingIcon = {
-                Icon(
-                    Icons.Filled.ArrowDropDown,
-                    contentDescription = null
-                )
-            },
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -376,15 +386,14 @@ private fun SeasonDropdown(
             (1..totalSeasons).forEach { season ->
                 DropdownMenuItem(
                     text = { Text("Temporada $season") },
-                    onClick = {
-                        onSeasonSelected(season)
-                        expanded = false
-                    }
+                    onClick = { onSeasonSelected(season); expanded = false }
                 )
             }
         }
     }
 }
+
+// ---- Helpers ────────────────────────────────────────────────────────────────
 
 @Composable
 private fun FormLabel(text: String) {
@@ -437,7 +446,7 @@ fun TmdbResultItem(media: TmdbMedia, onClick: () -> Unit) {
                 buildString {
                     media.displayDate.take(4).let { if (it.isNotBlank()) append(it) }
                     media.mediaType?.let {
-                        append(" · ${if (it == "movie") "Película" else "Serie"}")
+                        append(" · ${when(it) { "movie" -> "Película"; "anime" -> "Anime"; else -> "Serie" }}")
                     }
                 },
                 fontSize = 11.sp,

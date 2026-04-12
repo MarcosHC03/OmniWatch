@@ -36,6 +36,7 @@ object RssParser {
                 // Extraemos y limpiamos los textos (a veces vienen con basura de WordPress)
                 var title = titleRegex.find(itemXml)?.groupValues?.get(1)?.trim() ?: ""
                 title = title.replace("<![CDATA[", "").replace("]]>", "").trim()
+                title = android.text.Html.fromHtml(title, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
                 
                 var link = linkRegex.find(itemXml)?.groupValues?.get(1)?.trim() ?: ""
                 link = link.replace("<![CDATA[", "").replace("]]>", "").trim()

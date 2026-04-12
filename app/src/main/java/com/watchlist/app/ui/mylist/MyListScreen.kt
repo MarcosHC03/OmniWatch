@@ -146,9 +146,15 @@ fun MyListScreen(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
                 }
 
+                var localSearchText by remember { mutableStateOf(state.searchQuery) }
+
                 if (showSearch) {
                     OutlinedTextField(
-                        value = state.searchQuery, onValueChange = { viewModel.setSearch(it) },
+                        value = localSearchText, // 1. Lee de la memoria rápida local
+                        onValueChange = { nuevoTexto ->
+                            localSearchText = nuevoTexto // 2. Actualiza la pantalla al instante (no rompe el cursor)
+                            viewModel.setSearch(nuevoTexto) // 3. Le avisa al cerebro para que filtre la lista por detrás
+                        },
                         placeholder = { Text("Buscar en tu lista...") },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                         singleLine = true, shape = RoundedCornerShape(12.dp)
