@@ -8,6 +8,16 @@ App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de pelíc
 
 ## ✨ Características Principales
 
+<h2 align="center">📱 Vistazo a la App</h2>
+
+<p align="center">
+  <img src="assets/home.jpg" alt="Pantalla de Inicio" width="30%">
+  &nbsp; &nbsp;
+  <img src="assets/lista.jpg" alt="Pantalla Mi Lista" width="30%">
+  &nbsp; &nbsp;
+  <img src="assets/calendario.jpg" alt="Pantalla Calendario" width="30%">
+</p>
+
 - **Inicio (Muro de Noticias)**: Feed híbrido de noticias de entretenimiento y cultura geek (Cine PREMIERE, Código Espagueti, SomosKudasai) con soporte de caché para lectura offline.
 - **Mi Lista**: Tu biblioteca personal organizada por Series, Películas y Anime.
   - Tracking de estado (Viendo / Visto / Por ver) y puntaje.
