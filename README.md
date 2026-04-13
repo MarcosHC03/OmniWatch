@@ -18,22 +18,21 @@ App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de pelíc
   <img src="assets/calendario.jpg" alt="Pantalla Calendario" width="30%">
 </p>
 
-- **Inicio (Muro de Noticias)**: Feed híbrido de noticias de entretenimiento y cultura geek (Cine PREMIERE, Código Espagueti, SomosKudasai) con soporte de caché para lectura offline.
-- **Mi Lista**: Tu biblioteca personal organizada por Series, Películas y Anime.
-  - Tracking de estado (Viendo / Visto / Por ver) y puntaje.
-  - Seguimiento detallado de episodios y temporadas.
-  - Autocompletado inteligente vía **TMDB** (Series/Cine) y **MyAnimeList/Jikan** (Anime).
-  - Control manual de fechas de estreno y estado de emisión.
-  - **Backup Local**: Exportación e importación de tu lista en formato JSON.
+- **Inicio (Muro de Noticias)**: Feed híbrido de noticias de entretenimiento y cultura geek (**Cine PREMIERE, SensaCine, SomosKudasai**) con soporte de imágenes y caché offline.
+- **Mi Lista**: Biblioteca personal optimizada.
+  - **Títulos en Latino**: Integración con TMDB configurada para nombres de Latinoamérica (ej: *Un Show Más*).
+  - **Botón +1**: Incremento rápido de episodios desde la tarjeta principal con límite de seguridad por temporada.
+  - **Sincronización Inteligente**: Importación desde **MyAnimeList** con lógica anti-duplicados y detección automática de estados de emisión.
+  - **Backup Local**: Exportación e importación completa en formato JSON.
 - **Calendario Inteligente**:
-  - *Pestaña "Viendo"*: Tu agenda semanal (Lunes a Domingo) generada automáticamente para las series en emisión, más tu lista de maratones finalizados.
-  - *Pestaña "Por Ver"*: Línea de tiempo cronológica separando los próximos estrenos de los títulos que ya salieron.
+  - *Pestaña "Viendo"*: Agenda semanal automática basada en fechas de estreno reales.
+  - *Pestaña "Por Ver"*: Línea de tiempo cronológica para próximos lanzamientos y títulos ya estrenados.
 
 ## 🛠 Stack Técnico
 - **UI**: Kotlin + Jetpack Compose (Material Design 3)
-- **Arquitectura**: MVVM + Repository Pattern
-- **Base de Datos**: Room (SQLite offline)
-- **Red**: Retrofit + OkHttp (Consumo de REST APIs y XML/RSS)
+- **Arquitectura**: MVVM + Repository Pattern (Single Source of Truth)
+- **Base de Datos**: Room (SQLite con migraciones de datos)
+- **Red**: Retrofit + OkHttp (REST APIs y XML/RSS)
 - **Imágenes**: Coil (Carga asíncrona de pósters)
 - **Inyección de Dependencias**: Dagger Hilt
 - **Navegación**: Navigation Compose
@@ -44,7 +43,7 @@ App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de pelíc
 
 Podés probar la aplicación directamente en tu dispositivo Android (Requiere API 26+).
 1. Ve a la sección de **[Releases](../../releases)** de este repositorio.
-2. Descarga el archivo `OmniWatch-v1.0.apk`.
+2. Descarga el archivo `OmniWatch-v1.1.apk`.
 3. Instálalo en tu dispositivo (asegúrate de tener habilitada la instalación desde orígenes desconocidos).
 
 ---
