@@ -251,4 +251,12 @@ class MyListViewModel @Inject constructor(
     fun clearImportMessages() {
         _state.update { it.copy(importSuccess = null, importError = null) }
     }
+
+    fun plusOneEpisode(item: MediaItemEntity) {
+        viewModelScope.launch {
+            repository.updateItem(
+                item.copy(watchedEpisodes = item.watchedEpisodes + 1)
+            )
+        }
+    }
 }

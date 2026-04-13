@@ -163,31 +163,81 @@ class MediaRepository @Inject constructor(
         }
     }
 
+
+    /**
+     * Convierte fechas de MAL ("yyyy-MM-dd" o "yyyy-MM") al formato de la app "dd/MM/yyyy".
+     * Devuelve "" si la entrada es nula, vacía o no parseable.
+     */
+    private fun parseMalDate(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        val formats = listOf("yyyy-MM-dd", "yyyy-MM")
+        for (pattern in formats) {
+            try {
+                val formatter = java.time.format.DateTimeFormatter.ofPattern(pattern)
+                // Para "yyyy-MM" completamos con día 01 para poder parsear
+                val normalized = if (pattern == "yyyy-MM") "$raw-01" else raw
+                val date = java.time.LocalDate.parse(
+                    normalized,
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                )
+                return date.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+            } catch (_: Exception) { }
+        }
+        return "" // Formato desconocido — no perdemos el dato pero tampoco rompemos
+    }
+
     // Descarga la lista oficial y la guarda en la base de datos
     suspend fun syncOfficialMalList(accessToken: String) {
         // 1. Llamamos a la API con el Pase VIP
         val response = malDataApi.getMyAnimeList("Bearer $accessToken")
 
+        // ¡NUEVO! Obtenemos todos los animes que ya están guardados en tu base de datos
+        val localAnimes = dao.getAllItemsOnce().filter { it.mediaType == MediaType.ANIME }
+
         // 2. Traducimos los objetos de MAL a los nuestros
         val entities = response.data.map { item ->
+            val formattedDate = parseMalDate(item.node.startDate)
+
+            // airDayOfWeek: lo derivamos de la fecha de inicio si existe
+            val airDayOfWeek = if (formattedDate.isNotBlank()) {
+                try {
+                    java.time.LocalDate.parse(
+                        formattedDate,
+                        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                    ).dayOfWeek.value  // 1 = Lunes … 7 = Domingo
+                } catch (_: Exception) { 0 }
+            } else 0
+
+            // ¡LA MAGIA ANTI-DUPLICADOS!
+            // Buscamos si este anime de MAL (tmdbId) ya existe en tu celular.
+            val existingItem = localAnimes.find { it.tmdbId == item.node.id }
+            
+            // Si existe, usamos su ID real de Room para pisarlo (actualizarlo). 
+            // Si no existe, usamos 0 para que Room lo cree como nuevo.
+            val databaseId = existingItem?.id ?: 0L
+
             MediaItemEntity(
-                tmdbId = item.node.id, // Guardamos el ID de MAL acá por ahora
+                id = databaseId, // <-- Acá está la solución al problema
+                tmdbId = item.node.id,
                 title = item.node.title,
                 posterPath = item.node.mainPicture?.large ?: item.node.mainPicture?.medium ?: "",
                 mediaType = MediaType.ANIME,
                 watchStatus = when (item.list_status.status) {
-                    "watching" -> WatchStatus.WATCHING
-                    "completed" -> WatchStatus.COMPLETED
-                    else -> WatchStatus.PLANNED // plan_to_watch, on_hold, dropped
+                    "watching"       -> WatchStatus.WATCHING
+                    "completed"      -> WatchStatus.COMPLETED
+                    else             -> WatchStatus.PLANNED  // plan_to_watch, on_hold, dropped
                 },
-                rating = (item.list_status.score / 2.0f), // MAL puntúa del 1-10, nosotros de 1-5 estrellas
+                rating = (item.list_status.score / 2.0f),
                 totalEpisodes = item.node.numEpisodes,
                 watchedEpisodes = item.list_status.numEpisodesWatched,
-                platform = "MyAnimeList"
+                platform = "MyAnimeList",
+                releaseDate = formattedDate,
+                isAiring = item.node.status == "currently_airing",
+                airDayOfWeek = airDayOfWeek
             )
         }
 
-        // 3. Guardamos todo junto en la base de datos (REPLACE actualiza los que ya existen)
+        // 3. Guardamos todo junto en la base de datos (REPLACE actualiza los IDs existentes, inserta los 0)
         dao.insertAll(entities)
     }
 
@@ -199,8 +249,8 @@ class MediaRepository @Inject constructor(
             // 1. Armamos nuestra lista de diarios a la carta
             val feeds = listOf(
                 Pair("https://somoskudasai.com/feed/", "SomosKudasai"), // Anime
-                Pair("https://codigoespagueti.com/feed/", "Código Espagueti"), // Mix de Series, Cine y Geek
-                Pair("https://www.cinepremiere.com.mx/feed/", "Cine PREMIERE") // Especialistas en Cine y Series
+                Pair("https://www.sensacine.com/rss/noticias.xml", "SensaCine"),
+                Pair("https://www.cinepremiere.com.mx/feed/", "Cine PREMIERE")
             )
             
             val allArticles = mutableListOf<NewsArticleEntity>()

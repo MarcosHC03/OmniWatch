@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -205,126 +206,17 @@ fun MyListScreen(
                 contentPadding = PaddingValues(top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 80.dp, start = 16.dp, end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(groupedItems, key = { it.first().id }) { group ->
-                    if (state.selectedTab == MediaType.SERIES && group.size > 0) {
-                        SeriesGroupCard(
-                            group = group,
-                            onEditSeason = { item -> navController.navigate(Screen.AddMedia.createRoute(item.id)) },
-                            onDeleteSeason = { item -> viewModel.deleteItem(item) },
-                            onStatusChange = { item, newStatus -> viewModel.updateStatus(item, newStatus) }
-                        )
-                    } else {
-                        MediaItemCard(
-                            item = group.first(),
-                            onEdit = { navController.navigate(Screen.AddMedia.createRoute(group.first().id)) },
-                            onDelete = { viewModel.deleteItem(group.first()) },
-                            onStatusChange = { newStatus -> viewModel.updateStatus(group.first(), newStatus) }
-                        )
-                    }
+                items(state.items, key = { it.id }) { item ->
+                    MediaItemCard(
+                        item          = item,
+                        onEdit        = { navController.navigate(Screen.AddMedia.createRoute(item.id)) },
+                        onDelete      = { viewModel.deleteItem(item) },
+                        onStatusChange = { newStatus -> viewModel.updateStatus(item, newStatus) },
+                        onPlusOne     = { viewModel.plusOneEpisode(it) }
+                    )
                 }
             }
         }
-    }
-}
-
-// ---- TARJETA AGRUPADA DESPLEGABLE PARA SERIES ----
-@Composable
-fun SeriesGroupCard(group: List<MediaItemEntity>, onEditSeason: (MediaItemEntity) -> Unit, onDeleteSeason: (MediaItemEntity) -> Unit, onStatusChange: (MediaItemEntity, WatchStatus) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val sortedGroup = group.sortedBy { it.currentSeason }
-    val baseItem = sortedGroup.first()
-
-    val overallStatus = when {
-        sortedGroup.any { it.watchStatus == WatchStatus.WATCHING } -> WatchStatus.WATCHING
-        sortedGroup.all { it.watchStatus == WatchStatus.COMPLETED } -> WatchStatus.COMPLETED
-        else -> WatchStatus.PLANNED
-    }
-
-    val vistas = sortedGroup.filter { it.watchStatus == WatchStatus.COMPLETED }.map { "T${it.currentSeason}" }
-    val viendo = sortedGroup.filter { it.watchStatus == WatchStatus.WATCHING }
-    val porVer = sortedGroup.filter { it.watchStatus == WatchStatus.PLANNED }.map { "T${it.currentSeason}" }
-
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column {
-            Row(Modifier.fillMaxWidth()) {
-                if (baseItem.posterPath.isNotBlank()) {
-                    AsyncImage(model = baseItem.posterPath, contentDescription = baseItem.title, modifier = Modifier.width(70.dp).height(if (expanded) 105.dp else 125.dp).clip(RoundedCornerShape(topStart = 14.dp, bottomStart = if(expanded) 0.dp else 14.dp)), contentScale = ContentScale.Crop)
-                } else {
-                    Box(Modifier.width(70.dp).height(125.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)), contentAlignment = Alignment.Center) { Text("🎬", fontSize = 24.sp) }
-                }
-
-                Column(Modifier.weight(1f).padding(10.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(baseItem.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        Icon(imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, contentDescription = "Expandir", tint = MaterialTheme.colorScheme.onSurface.copy(0.5f))
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    WatchStatusBadge(overallStatus)
-                    Spacer(Modifier.height(6.dp))
-
-                    if (vistas.isNotEmpty()) Text("Vistas: ${vistas.joinToString(", ")}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
-                    viendo.forEach { Text("Viendo: ${it.watchedEpisodes}/${it.totalEpisodes} eps • T${it.currentSeason}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f)) }
-                    if (porVer.isNotEmpty()) Text("Por ver: ${porVer.joinToString(", ")}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
-                    
-                    if (baseItem.platform.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(baseItem.platform, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.45f))
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = expanded) {
-                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(0.1f))
-                    sortedGroup.forEachIndexed { index, item ->
-                        MiniSeasonRow(item = item, onEdit = { onEditSeason(item) }, onDelete = { onDeleteSeason(item) }, onStatusChange = { status -> onStatusChange(item, status) })
-                        if (index < sortedGroup.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurface.copy(0.05f))
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ---- FILA EN MINIATURA PARA EL DESPLEGABLE ----
-@Composable
-fun MiniSeasonRow(item: MediaItemEntity, onEdit: () -> Unit, onDelete: () -> Unit, onStatusChange: (WatchStatus) -> Unit) {
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var showStatusMenu by remember { mutableStateOf(false) }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false }, title = { Text("Eliminar Temporada") },
-            text = { Text("¿Eliminás la Temporada ${item.currentSeason} de tu lista?") },
-            confirmButton = { TextButton(onClick = { onDelete(); showDeleteDialog = false }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") } }
-        )
-    }
-
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Temporada ${item.currentSeason}", fontWeight = FontWeight.Medium, fontSize = 13.sp)
-            val progress = if (item.totalEpisodes > 0) item.watchedEpisodes.toFloat() / item.totalEpisodes.toFloat() else 0f
-            Text(text = "${item.watchedEpisodes}/${item.totalEpisodes} eps", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
-            if (item.watchStatus == WatchStatus.WATCHING && progress > 0f) {
-                Spacer(Modifier.height(4.dp))
-                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(0.6f).height(3.dp).clip(RoundedCornerShape(2.dp)), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
-            }
-        }
-        Box {
-            Box(Modifier.clickable { showStatusMenu = true }) { WatchStatusBadge(item.watchStatus) }
-            DropdownMenu(expanded = showStatusMenu, onDismissRequest = { showStatusMenu = false }) {
-                WatchStatus.values().forEach { status -> DropdownMenuItem(text = { Text(when (status) { WatchStatus.WATCHING -> "Viendo"; WatchStatus.COMPLETED -> "Visto"; WatchStatus.PLANNED -> "Por ver" }) }, onClick = { onStatusChange(status); showStatusMenu = false }) }
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) { Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(16.dp)) }
-        IconButton(onClick = { showDeleteDialog = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Filled.Delete, contentDescription = "Eliminar", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error) }
     }
 }
 
@@ -341,55 +233,204 @@ fun FilterStatusRow(selectedStatus: WatchStatus?, onFilterChanged: (WatchStatus?
 
 // ---- Card Normal ----
 @Composable
-fun MediaItemCard(item: MediaItemEntity, onEdit: () -> Unit, onDelete: () -> Unit, onStatusChange: (WatchStatus) -> Unit) {
+fun MediaItemCard(
+    item: MediaItemEntity,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onStatusChange: (WatchStatus) -> Unit,
+    onPlusOne: (MediaItemEntity) -> Unit
+) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showStatusMenu by remember { mutableStateOf(false) }
+    var showStatusMenu  by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false }, title = { Text("Eliminar") },
-            text = { Text("¿Eliminás \"${item.title}\" de tu lista?") },
-            confirmButton = { TextButton(onClick = { onDelete(); showDeleteDialog = false }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") } }
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Eliminar") },
+            text  = { Text("¿Eliminás \"${item.title}\" de tu lista?") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(); showDeleteDialog = false }) {
+                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") }
+            }
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-        Row(Modifier.fillMaxWidth()) {
+    Card(
+        modifier  = Modifier.fillMaxWidth(),
+        shape     = RoundedCornerShape(14.dp),
+        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // ── Póster ──────────────────────────────────────────────────────
             if (item.posterPath.isNotBlank()) {
-                AsyncImage(model = item.posterPath, contentDescription = item.title, modifier = Modifier.width(70.dp).height(105.dp).clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)), contentScale = ContentScale.Crop)
+                AsyncImage(
+                    model              = item.posterPath,
+                    contentDescription = item.title,
+                    modifier           = Modifier
+                        .width(70.dp)
+                        .height(105.dp)
+                        .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)),
+                    contentScale = ContentScale.Crop
+                )
             } else {
-                Box(Modifier.width(70.dp).height(105.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)), contentAlignment = Alignment.Center) { Text("🎬", fontSize = 24.sp) }
+                Box(
+                    Modifier
+                        .width(70.dp)
+                        .height(105.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) { Text("🎬", fontSize = 24.sp) }
             }
-            Column(Modifier.weight(1f).padding(10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    Text(text = item.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Row {
-                        IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) { Icon(Icons.Filled.Edit, contentDescription = "Editar", modifier = Modifier.size(16.dp)) }
-                        IconButton(onClick = { showDeleteDialog = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Filled.Delete, contentDescription = "Eliminar", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error) }
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
+
+            // ── Contenido central ────────────────────────────────────────────
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Título
+                Text(
+                    text       = item.title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 14.sp,
+                    maxLines   = 2,
+                    overflow   = TextOverflow.Ellipsis
+                )
+
+                // Badge de estado (tocable para cambiar)
                 Box {
-                    Box(Modifier.clickable { showStatusMenu = true }) { WatchStatusBadge(item.watchStatus) }
-                    DropdownMenu(expanded = showStatusMenu, onDismissRequest = { showStatusMenu = false }) {
-                        WatchStatus.values().forEach { status -> DropdownMenuItem(text = { Text(when (status) { WatchStatus.WATCHING -> "Viendo"; WatchStatus.COMPLETED -> "Visto"; WatchStatus.PLANNED -> "Por ver" }) }, onClick = { onStatusChange(status); showStatusMenu = false }) }
+                    Box(Modifier.clickable { showStatusMenu = true }) {
+                        WatchStatusBadge(item.watchStatus)
+                    }
+                    DropdownMenu(
+                        expanded          = showStatusMenu,
+                        onDismissRequest  = { showStatusMenu = false }
+                    ) {
+                        WatchStatus.values().forEach { status ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(when (status) {
+                                        WatchStatus.WATCHING  -> "Viendo"
+                                        WatchStatus.COMPLETED -> "Visto"
+                                        WatchStatus.PLANNED   -> "Por ver"
+                                    })
+                                },
+                                onClick = { onStatusChange(status); showStatusMenu = false }
+                            )
+                        }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                if (item.rating > 0) StarRatingBar(rating = item.rating, starSize = 16)
+
+                // Puntaje
+                if (item.rating > 0f) {
+                    StarRatingBar(rating = item.rating, starSize = 14)
+                }
+
+                // Temporada + progreso de episodios (solo Series y Anime)
                 if (item.mediaType != MediaType.MOVIE && item.totalEpisodes > 0) {
-                    Spacer(Modifier.height(4.dp))
-                    val progress = if (item.totalEpisodes > 0) item.watchedEpisodes.toFloat() / item.totalEpisodes.toFloat() else 0f
-                    Text(text = buildString { append("${item.watchedEpisodes}/${item.totalEpisodes} eps"); if (item.mediaType == MediaType.SERIES) append(" · T${item.currentSeason}") }, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.55f))
-                    if (item.watchStatus == WatchStatus.WATCHING && progress > 0f) {
-                        Spacer(Modifier.height(3.dp))
-                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
+                    val progress = (item.watchedEpisodes.toFloat() / item.totalEpisodes.toFloat())
+                        .coerceIn(0f, 1f)
+
+                    // "T2 · 6/13 eps"
+                    val label = buildString {
+                        if (item.mediaType == MediaType.SERIES) append("T${item.currentSeason} · ")
+                        append("${item.watchedEpisodes}/${item.totalEpisodes} eps")
+                    }
+                    Text(
+                        text     = label,
+                        fontSize = 11.sp,
+                        color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+
+                    LinearProgressIndicator(
+                        progress    = { progress },
+                        modifier    = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color       = MaterialTheme.colorScheme.primary,
+                        trackColor  = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                }
+
+                // Plataforma
+                if (item.platform.isNotBlank()) {
+                    Text(
+                        text     = item.platform,
+                        fontSize = 11.sp,
+                        color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    )
+                }
+            }
+
+            // ── Acciones verticales ──────────────────────────────────────────
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(end = 6.dp)
+            ) {
+                // Botón +1 episodio
+                if (item.mediaType != MediaType.MOVIE && item.watchStatus == WatchStatus.WATCHING) {
+                    IconButton(
+                        onClick = {
+                            if (item.watchedEpisodes < item.totalEpisodes) {
+                                onPlusOne(item)
+                            } else {
+                                android.widget.Toast.makeText(
+                                    ctx,
+                                    "Modifique la serie a la siguiente temporada editando la tarjeta",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    ) {
+                        // Ícono diferente si ya completó todos los eps
+                        val tint = if (item.watchedEpisodes >= item.totalEpisodes && item.totalEpisodes > 0)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        else
+                            MaterialTheme.colorScheme.primary
+
+                        Icon(
+                            imageVector        = Icons.Filled.AddCircle,
+                            contentDescription = "+1 episodio",
+                            tint               = tint,
+                            modifier           = Modifier.size(28.dp)
+                        )
                     }
                 }
-                if (item.platform.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(text = item.platform, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.45f))
+
+                // Editar
+                IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Editar",
+                        modifier           = Modifier.size(16.dp)
+                    )
+                }
+
+                // Eliminar
+                IconButton(
+                    onClick  = { showDeleteDialog = true },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = "Eliminar",
+                        modifier           = Modifier.size(16.dp),
+                        tint               = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }

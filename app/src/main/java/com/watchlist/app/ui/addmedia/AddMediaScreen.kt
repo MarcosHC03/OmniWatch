@@ -35,6 +35,7 @@ import com.watchlist.app.viewmodel.AddMediaViewModel
 @Composable
 fun AddMediaScreen(
     itemId: Long,
+    autoSearchQuery: String = "",
     onNavigateBack: () -> Unit,
     viewModel: AddMediaViewModel = hiltViewModel()
 ) {
@@ -42,6 +43,11 @@ fun AddMediaScreen(
 
     LaunchedEffect(itemId) {
         if (itemId > 0L) viewModel.loadItemForEditing(itemId)
+    }
+    LaunchedEffect(autoSearchQuery) {
+        if (autoSearchQuery.isNotBlank() && itemId <= 0L) {
+            viewModel.autoSearchAndSelect(autoSearchQuery)
+        }
     }
     LaunchedEffect(state.savedSuccessfully) {
         if (state.savedSuccessfully) onNavigateBack()
@@ -291,9 +297,9 @@ fun AddMediaScreen(
 @Composable
 private fun EpisodesSection(
     state: com.watchlist.app.viewmodel.AddMediaUiState,
-    onWatchedEpisodesChange: (Int) -> Unit,
-    onTotalEpisodesChange: (Int) -> Unit,
-    onSeasonChange: (Int) -> Unit
+    onWatchedEpisodesChange: (String) -> Unit,
+    onTotalEpisodesChange: (String) -> Unit,
+    onSeasonChange: (String) -> Unit
 ) {
     val isAnime = state.mediaType == MediaType.ANIME
     val watchedDisabled = state.watchStatus == WatchStatus.PLANNED
@@ -303,8 +309,8 @@ private fun EpisodesSection(
         // Fila: eps. vistos + total eps.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
-                value = if (state.watchedEpisodes == 0) "" else state.watchedEpisodes.toString(),
-                onValueChange = { onWatchedEpisodesChange(it.toIntOrNull() ?: 0) },
+                value = state.watchedEpisodes,
+                onValueChange = { onWatchedEpisodesChange(it) },
                 label = { Text("Eps. vistos") },
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -323,8 +329,8 @@ private fun EpisodesSection(
                 )
             )
             OutlinedTextField(
-                value = if (state.totalEpisodes == 0) "" else state.totalEpisodes.toString(),
-                onValueChange = { onTotalEpisodesChange(it.toIntOrNull() ?: 0) },
+                value = state.totalEpisodes,
+                onValueChange = { onTotalEpisodesChange(it) },
                 label = { Text("Total eps.") },
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -336,13 +342,13 @@ private fun EpisodesSection(
         // Temporada: dropdown si hay datos TMDB, input manual si no, oculto para Anime
         when {
             !isAnime && state.availableSeasons > 0 -> SeasonDropdown(
-                currentSeason = state.currentSeason,
+                currentSeason = state.currentSeason.toIntOrNull() ?: 1,
                 totalSeasons = state.availableSeasons,
-                onSeasonSelected = onSeasonChange
+                onSeasonSelected = { onSeasonChange(it.toString()) }
             )
             !isAnime -> OutlinedTextField(
-                value = if (state.currentSeason > 0) state.currentSeason.toString() else "",
-                onValueChange = { onSeasonChange(it.toIntOrNull() ?: 1) },
+                value = state.currentSeason,
+                onValueChange = { onSeasonChange(it) },
                 label = { Text("Temporada") },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

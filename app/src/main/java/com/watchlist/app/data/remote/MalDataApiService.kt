@@ -20,7 +20,9 @@ data class MalAnimeNode(
     val title: String,
     @SerializedName("main_picture") val mainPicture: MalPicture?,
     @SerializedName("num_episodes") val numEpisodes: Int,
-    @SerializedName("media_type") val mediaType: String
+    @SerializedName("media_type") val mediaType: String,
+    @SerializedName("start_date") val startDate: String?,
+    @SerializedName("status") val status: String?
 )
 
 data class MalPicture(
@@ -41,7 +43,7 @@ interface MalDataApiService {
     @GET("v2/users/@me/animelist")
     suspend fun getMyAnimeList(
         @Header("Authorization") token: String,
-        @Query("fields") fields: String = "list_status,num_episodes,media_type",
+        @Query("fields") fields: String = "list_status,num_episodes,media_type,start_date,status",
         @Query("limit") limit: Int = 1000 // Pedimos hasta 1000 de un saque para no renegar con la paginación ahora
     ): MalAnimeListResponse
 }

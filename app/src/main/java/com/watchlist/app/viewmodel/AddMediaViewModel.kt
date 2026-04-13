@@ -61,9 +61,9 @@ data class AddMediaUiState(
     val mediaType: MediaType = MediaType.SERIES,
     val watchStatus: WatchStatus = WatchStatus.PLANNED,
     val rating: Float = 0f,
-    val totalEpisodes: Int = 0,
-    val watchedEpisodes: Int = 0,
-    val currentSeason: Int = 1,
+    val totalEpisodes: String = "",
+    val watchedEpisodes: String = "",
+    val currentSeason: String = "1",
     val platform: String = "",
     val year: Int = 0,
     val tmdbId: Int = 0,
@@ -115,9 +115,9 @@ class AddMediaViewModel @Inject constructor(
                 mediaType = item.mediaType,
                 watchStatus = item.watchStatus,
                 rating = item.rating,
-                totalEpisodes = item.totalEpisodes,
-                watchedEpisodes = item.watchedEpisodes,
-                currentSeason = item.currentSeason,
+                totalEpisodes   = item.totalEpisodes.takeIf { it > 0 }?.toString() ?: "",
+                watchedEpisodes = item.watchedEpisodes.takeIf { it > 0 }?.toString() ?: "",
+                currentSeason   = item.currentSeason.toString(),
                 platform = item.platform,
                 year = item.year,
                 tmdbId = item.tmdbId,
@@ -172,9 +172,9 @@ class AddMediaViewModel @Inject constructor(
             releaseDate = formattedDate,
             availableSeasons = 0,
             episodesPerSeason = emptyMap(),
-            currentSeason = 1,
-            totalEpisodes = media.totalEpisodes ?: 0,
-            watchedEpisodes = 0,
+            currentSeason = "1",
+            totalEpisodes = (media.totalEpisodes ?: 0).toString(),
+            watchedEpisodes = "0",
             watchedEpisodesError = false,
             searchResults = emptyList()
         )
@@ -193,7 +193,7 @@ class AddMediaViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     availableSeasons = validSeasons.size,
                     episodesPerSeason = episodesMap,
-                    totalEpisodes = episodesMap[1] ?: 0,
+                    totalEpisodes = (episodesMap[1] ?: 0).toString(),
                     isAiring = airing,
                     releaseDate = airDate
                 )
@@ -203,6 +203,28 @@ class AddMediaViewModel @Inject constructor(
 
     fun clearSearch() {
         _uiState.value = _uiState.value.copy(searchResults = emptyList())
+    }
+
+    /**
+     * Llamada desde la pantalla cuando se abre desde el Home con un título pre-cargado.
+     * Busca el query y selecciona automáticamente el primer resultado.
+     */
+    fun autoSearchAndSelect(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSearching = true)
+            val results = repository.searchMulti(query)
+            if (results.isNotEmpty()) {
+                // Seleccionamos el primero directamente — misma lógica que el usuario eligiendo
+                selectTmdbResult(results.first())
+            }
+            // Si no hay resultados, al menos dejamos el título escrito para que el usuario continúe
+            _uiState.value = _uiState.value.copy(
+                title = if (results.isEmpty()) query else _uiState.value.title,
+                searchResults = emptyList(),
+                isSearching = false
+            )
+        }
     }
 
     fun setSeasonData(numberOfSeasons: Int, episodesPerSeason: Map<Int, Int>) {
@@ -221,7 +243,7 @@ class AddMediaViewModel @Inject constructor(
     fun updateMediaType(v: MediaType) {
         _uiState.value = _uiState.value.copy(
             mediaType = v,
-            currentSeason = 1,
+            currentSeason = "1",
             availableSeasons = 0
         )
     }
@@ -230,7 +252,7 @@ class AddMediaViewModel @Inject constructor(
         val s = _uiState.value
         val newWatched = when (v) {
             WatchStatus.COMPLETED -> s.totalEpisodes
-            WatchStatus.PLANNED   -> 0
+            WatchStatus.PLANNED   -> ""
             WatchStatus.WATCHING  -> s.watchedEpisodes
         }
         _uiState.value = s.copy(
@@ -244,31 +266,45 @@ class AddMediaViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(rating = v)
     }
 
-    fun updateTotalEpisodes(v: Int) {
+    fun updateTotalEpisodes(v: String) {
         val s = _uiState.value
+        val totalInt = v.toIntOrNull() ?: 0
+        val watchedInt = s.watchedEpisodes.toIntOrNull() ?: 0
         _uiState.value = s.copy(
             totalEpisodes = v,
-            watchedEpisodesError = s.watchedEpisodes > v && v > 0
+            watchedEpisodesError = watchedInt > totalInt && totalInt > 0
         )
     }
 
-    fun updateWatchedEpisodes(v: Int) {
+    fun updateWatchedEpisodes(v: String) {
         val s = _uiState.value
-        val newStatus = if (v > 0 && s.watchStatus == WatchStatus.PLANNED)
+        val watchedInt = v.toIntOrNull() ?: 0
+        val totalInt = s.totalEpisodes.toIntOrNull() ?: 0
+        val newStatus = if (watchedInt > 0 && s.watchStatus == WatchStatus.PLANNED)
             WatchStatus.WATCHING else s.watchStatus
         _uiState.value = s.copy(
             watchedEpisodes = v,
             watchStatus = newStatus,
-            watchedEpisodesError = s.totalEpisodes > 0 && v > s.totalEpisodes
+            watchedEpisodesError = totalInt > 0 && watchedInt > totalInt
         )
     }
 
-    fun updateCurrentSeason(v: Int) {
+    fun updateCurrentSeason(v: String) {
         val s = _uiState.value
+        val seasonInt = v.toIntOrNull() ?: 1
+
+        // Autocompletado desde el mapa de temporadas local (sin llamada a red)
+        val autoTotal = s.episodesPerSeason[seasonInt]
         _uiState.value = s.copy(
             currentSeason = v,
-            totalEpisodes = s.episodesPerSeason[v] ?: s.totalEpisodes
+            totalEpisodes = autoTotal?.toString() ?: s.totalEpisodes
         )
+
+        // Misión 2: si no tenemos datos locales del mapa Y es una Serie con tmdbId válido,
+        // consultamos TMDB en segundo plano para obtener el total de eps de esa temporada
+        if (autoTotal == null && s.mediaType == MediaType.SERIES && s.tmdbId > 0 && seasonInt > 0) {
+            fetchEpisodesForSeason(s.tmdbId, seasonInt)
+        }
     }
 
     fun updatePlatform(v: String) {
@@ -288,39 +324,74 @@ class AddMediaViewModel @Inject constructor(
     fun saveItem() {
         val s = _uiState.value
         if (s.title.isBlank() || s.watchedEpisodesError) return
+
+        // Conversión segura String → Int al momento de persistir
+        val totalEpsInt    = s.totalEpisodes.toIntOrNull() ?: 0
+        val watchedEpsInt  = s.watchedEpisodes.toIntOrNull() ?: 0
+        val currentSeasonInt = s.currentSeason.toIntOrNull()?.coerceAtLeast(1) ?: 1
+
         viewModelScope.launch {
             _uiState.value = s.copy(isSaving = true)
 
-            // Calculamos automáticamente el día de la semana (1=Lunes, 7=Domingo)
             val dayOfWeek = try {
-                if (s.releaseDate.isNotBlank()) {
-                    LocalDate.parse(s.releaseDate, DateTimeFormatter.ofPattern("dd/MM/yyyy")).dayOfWeek.value
-                } else 0
-            } catch (e: Exception) {
-                0
-            }
+                if (s.releaseDate.isNotBlank())
+                    LocalDate.parse(s.releaseDate, DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                        .dayOfWeek.value
+                else 0
+            } catch (_: Exception) { 0 }
 
             val entity = MediaItemEntity(
-                id = if (s.isEditing) s.editingItemId else 0L,
-                title = s.title,
-                overview = s.overview,
-                posterPath = s.posterPath,
-                mediaType = s.mediaType,
-                watchStatus = s.watchStatus,
-                rating = s.rating,
-                totalEpisodes = s.totalEpisodes,
-                watchedEpisodes = s.watchedEpisodes,
-                currentSeason = s.currentSeason,
-                platform = s.platform,
-                year = s.year,
-                tmdbId = s.tmdbId,
-                releaseDate = s.releaseDate,
-                isAiring = s.isAiring,
-                airDayOfWeek = dayOfWeek
+                id             = if (s.isEditing) s.editingItemId else 0L,
+                title          = s.title,
+                overview       = s.overview,
+                posterPath     = s.posterPath,
+                mediaType      = s.mediaType,
+                watchStatus    = s.watchStatus,
+                rating         = s.rating,
+                totalEpisodes  = totalEpsInt,
+                watchedEpisodes = watchedEpsInt,
+                currentSeason  = currentSeasonInt,
+                platform       = s.platform,
+                year           = s.year,
+                tmdbId         = s.tmdbId,
+                releaseDate    = s.releaseDate,
+                isAiring       = s.isAiring,
+                airDayOfWeek   = dayOfWeek
             )
             if (s.isEditing) repository.updateItem(entity)
             else repository.insertItem(entity)
             _uiState.value = _uiState.value.copy(isSaving = false, savedSuccessfully = true)
+        }
+    }
+
+    /**
+     * Consulta TMDB en segundo plano para obtener el total de episodios de una
+     * temporada específica y actualiza el estado silenciosamente.
+     * Solo se llama cuando el usuario escribe un número de temporada que no está
+     * en el mapa local (episodesPerSeason), evitando llamadas redundantes.
+     */
+    private fun fetchEpisodesForSeason(tmdbId: Int, season: Int) {
+        viewModelScope.launch {
+            val details = runCatching { repository.getTvDetails(tmdbId) }.getOrNull() ?: return@launch
+
+            // Actualizamos el mapa local con todos los datos que nos devolvió TMDB
+            // para que futuros cambios de temporada no necesiten otra llamada a red
+            val updatedMap = details.seasons
+                .filter { it.seasonNumber > 0 }
+                .associate { it.seasonNumber to it.episodeCount }
+
+            val episodesForThisSeason = updatedMap[season]
+
+            // Solo actualizamos si el usuario no cambió de temporada mientras esperaba
+            val currentState = _uiState.value
+            if (currentState.currentSeason.toIntOrNull() == season) {
+                _uiState.value = currentState.copy(
+                    episodesPerSeason = updatedMap,
+                    availableSeasons  = updatedMap.size,
+                    // Solo pisamos totalEpisodes si TMDB nos dio un dato concreto
+                    totalEpisodes = episodesForThisSeason?.toString() ?: currentState.totalEpisodes
+                )
+            }
         }
     }
 }

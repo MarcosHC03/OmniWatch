@@ -108,7 +108,7 @@ fun HomeScreen(
                                     media = media,
                                     onClick = {
                                         navController.navigate(
-                                            Screen.AddMedia.createRoute()
+                                            Screen.AddMedia.createRoute(query = media.displayTitle)
                                         )
                                     }
                                 )

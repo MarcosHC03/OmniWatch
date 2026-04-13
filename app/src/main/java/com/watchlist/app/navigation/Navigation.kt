@@ -17,13 +17,15 @@ import com.watchlist.app.ui.addmedia.AddMediaScreen
 import com.watchlist.app.ui.home.HomeScreen
 import com.watchlist.app.ui.mylist.MyListScreen
 import com.watchlist.app.ui.calendar.CalendarScreen
+import android.net.Uri
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
     object MyList : Screen("my_list")
     object Calendar : Screen("calendar")
-    object AddMedia : Screen("add_media?itemId={itemId}") {
-        fun createRoute(itemId: Long = -1L) = "add_media?itemId=$itemId"
+    object AddMedia : Screen("add_media?itemId={itemId}&query={query}") {
+        fun createRoute(itemId: Long = -1L, query: String = "") =
+            "add_media?itemId=$itemId&query=${Uri.encode(query)}"
     }
 }
 
@@ -66,12 +68,18 @@ fun WatchListNavHost(
                 navArgument("itemId") {
                     type = NavType.LongType
                     defaultValue = -1L
+                },
+                navArgument("query") {
+                    type = NavType.StringType
+                    defaultValue = ""
                 }
             )
         ) { backStackEntry ->
             val itemId = backStackEntry.arguments?.getLong("itemId") ?: -1L
+            val query  = backStackEntry.arguments?.getString("query") ?: ""
             AddMediaScreen(
                 itemId = itemId,
+                autoSearchQuery = query,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
