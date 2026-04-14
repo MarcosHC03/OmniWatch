@@ -68,8 +68,10 @@ data class AddMediaUiState(
     val year: Int = 0,
     val tmdbId: Int = 0,
 
-    // Nuevos campos — Misión 2
-    val releaseDate: String = "",    // dd/MM/yyyy — editable por el usuario
+    // Fecha editable separada
+    val releaseDay: String = "",
+    val releaseMonth: String = "",
+    val releaseYear: String = "",
     val isAiring: Boolean = false,
 
     // Temporadas TMDB
@@ -78,6 +80,10 @@ data class AddMediaUiState(
 
     // Validación episodios
     val watchedEpisodesError: Boolean = false,
+
+    // Errores visuales
+    val titleError: Boolean = false,
+    val dateError: Boolean = false,
 
     // Búsqueda
     val searchResults: List<TmdbMedia> = emptyList(),
@@ -108,6 +114,7 @@ class AddMediaViewModel @Inject constructor(
         if (itemId <= 0L) return
         viewModelScope.launch {
             val item = repository.getItemById(itemId) ?: return@launch
+            val dateParts = item.releaseDate.split("/")
             _uiState.value = AddMediaUiState(
                 title = item.title,
                 overview = item.overview,
@@ -121,7 +128,9 @@ class AddMediaViewModel @Inject constructor(
                 platform = item.platform,
                 year = item.year,
                 tmdbId = item.tmdbId,
-                releaseDate = item.releaseDate,
+                releaseDay = dateParts.getOrNull(0) ?: "",
+                releaseMonth = dateParts.getOrNull(1) ?: "",
+                releaseYear = dateParts.getOrNull(2) ?: "",
                 isAiring = item.isAiring,
                 isEditing = true,
                 editingItemId = itemId
@@ -162,6 +171,8 @@ class AddMediaViewModel @Inject constructor(
         }
         val formattedDate = rawDate.toDisplayDate()
 
+        val dateParts = formattedDate.split("/")
+
         _uiState.value = _uiState.value.copy(
             title = media.displayTitle,
             overview = media.overview ?: "",
@@ -169,7 +180,9 @@ class AddMediaViewModel @Inject constructor(
             year = year,
             tmdbId = media.id,
             mediaType = type,
-            releaseDate = formattedDate,
+            releaseDay = dateParts.getOrNull(0) ?: "",
+            releaseMonth = dateParts.getOrNull(1) ?: "",
+            releaseYear = dateParts.getOrNull(2) ?: "",
             availableSeasons = 0,
             episodesPerSeason = emptyMap(),
             currentSeason = "1",
@@ -188,14 +201,12 @@ class AddMediaViewModel @Inject constructor(
 
                 // Usamos false por defecto para que el usuario lo decida a mano
                 val airing = false
-                val airDate = formattedDate
 
                 _uiState.value = _uiState.value.copy(
                     availableSeasons = validSeasons.size,
                     episodesPerSeason = episodesMap,
                     totalEpisodes = (episodesMap[1] ?: 0).toString(),
-                    isAiring = airing,
-                    releaseDate = airDate
+                    isAiring = airing
                 )
             }
         }
@@ -237,7 +248,7 @@ class AddMediaViewModel @Inject constructor(
     // ---- Actualizadores de campos ----
 
     fun updateTitle(v: String) {
-        _uiState.value = _uiState.value.copy(title = v)
+        _uiState.value = _uiState.value.copy(title = v, titleError = false)
     }
 
     fun updateMediaType(v: MediaType) {
@@ -311,8 +322,16 @@ class AddMediaViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(platform = v)
     }
 
-    fun updateReleaseDate(v: String) {
-        _uiState.value = _uiState.value.copy(releaseDate = v)
+    fun updateReleaseDay(v: String) {
+        _uiState.value = _uiState.value.copy(releaseDay = v, dateError = false)
+    }
+    
+    fun updateReleaseMonth(v: String) {
+        _uiState.value = _uiState.value.copy(releaseMonth = v, dateError = false)
+    }
+    
+    fun updateReleaseYear(v: String) {
+        _uiState.value = _uiState.value.copy(releaseYear = v, dateError = false)
     }
 
     fun updateIsAiring(v: Boolean) {
@@ -323,9 +342,40 @@ class AddMediaViewModel @Inject constructor(
 
     fun saveItem() {
         val s = _uiState.value
-        if (s.title.isBlank() || s.watchedEpisodesError) return
 
-        // Conversión segura String → Int al momento de persistir
+        // 1. Validamos la lógica en variables separadas
+        val isTitleValid = s.title.isNotBlank()
+
+        val d = s.releaseDay.toIntOrNull() ?: 0
+        val m = s.releaseMonth.toIntOrNull() ?: 0
+        val y = s.releaseYear.toIntOrNull() ?: 0
+
+        // Si escribieron algo, le pedimos a Kotlin que intente crear la fecha en el calendario real
+        val isDateValid = if (s.releaseDay.isNotBlank() || s.releaseMonth.isNotBlank() || s.releaseYear.isNotBlank()) {
+            try {
+                // Intentamos crear la fecha exacta. Si le pasás (2024, 2, 31), esto tira un error al instante.
+                java.time.LocalDate.of(y, m, d)
+                
+                // Si sobrevivió a la línea de arriba, la fecha existe. 
+                // Solo le sumamos nuestra regla de lógica humana:
+                y > 1800
+            } catch (e: Exception) {
+                false // Si tiró error (mes 15, 31 de febrero, etc), la fecha es inválida
+            }
+        } else true // Si está todo vacío, es válido
+
+        // 2. Si algo está mal, prendemos las alarmas visuales y CORTAMOS acá
+        if (!isTitleValid || !isDateValid || s.watchedEpisodesError) {
+            _uiState.value = s.copy(
+                titleError = !isTitleValid,
+                dateError = !isDateValid
+            )
+            return
+        }
+
+        // Si llegamos acá, todo está perfecto. Armamos la fecha final:
+        val finalDate = if (s.releaseDay.isNotBlank()) "${s.releaseDay.padStart(2, '0')}/${s.releaseMonth.padStart(2, '0')}/$y" else ""
+
         val totalEpsInt    = s.totalEpisodes.toIntOrNull() ?: 0
         val watchedEpsInt  = s.watchedEpisodes.toIntOrNull() ?: 0
         val currentSeasonInt = s.currentSeason.toIntOrNull()?.coerceAtLeast(1) ?: 1
@@ -333,9 +383,10 @@ class AddMediaViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = s.copy(isSaving = true)
 
+            // Calculamos el día de la semana usando nuestra finalDate recién armada
             val dayOfWeek = try {
-                if (s.releaseDate.isNotBlank())
-                    LocalDate.parse(s.releaseDate, DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                if (finalDate.isNotBlank())
+                    LocalDate.parse(finalDate, DateTimeFormatter.ofPattern("dd/MM/yyyy"))
                         .dayOfWeek.value
                 else 0
             } catch (_: Exception) { 0 }
@@ -354,7 +405,7 @@ class AddMediaViewModel @Inject constructor(
                 platform       = s.platform,
                 year           = s.year,
                 tmdbId         = s.tmdbId,
-                releaseDate    = s.releaseDate,
+                releaseDate    = finalDate,
                 isAiring       = s.isAiring,
                 airDayOfWeek   = dayOfWeek
             )

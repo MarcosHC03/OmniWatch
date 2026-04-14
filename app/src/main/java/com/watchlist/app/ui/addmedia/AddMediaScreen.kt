@@ -168,7 +168,11 @@ fun AddMediaScreen(
                     label = { Text("Título") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    singleLine = true
+                    singleLine = true,
+                    isError = state.titleError,
+                    supportingText = if (state.titleError) {
+                        { Text("El título es obligatorio") }
+                    } else null
                 )
 
                 // Tipo de medio
@@ -221,17 +225,52 @@ fun AddMediaScreen(
                     )
                 }
 
-                // ── MISIÓN 3A: Fecha de estreno ──────────────────────────────────────
-                OutlinedTextField(
-                    value = state.releaseDate,
-                    onValueChange = { viewModel.updateReleaseDate(it) },
-                    label = { Text("Fecha de estreno") },
-                    placeholder = { Text("DD/MM/AAAA") },
+                // Fecha de estreno
+                FormLabel("Fecha de estreno")
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = state.releaseDay,
+                        onValueChange = { if (it.length <= 2) viewModel.updateReleaseDay(it) },
+                        label = { Text("Día", fontSize = 11.sp) },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        isError = state.titleError
+                    )
+                    OutlinedTextField(
+                        value = state.releaseMonth,
+                        onValueChange = { if (it.length <= 2) viewModel.updateReleaseMonth(it) },
+                        label = { Text("Mes", fontSize = 11.sp) },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        isError = state.titleError
+                    )
+                    OutlinedTextField(
+                        value = state.releaseYear,
+                        onValueChange = { if (it.length <= 4) viewModel.updateReleaseYear(it) },
+                        label = { Text("Año", fontSize = 11.sp) },
+                        modifier = Modifier.weight(1.5f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        isError = state.titleError
+                    )
+                }
+
+                if (state.dateError) {
+                    Text(
+                        text = "Fecha inválida (ej: Día 1-31, Mes 1-12, Año 2024)",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
 
                 // ── MISIÓN 3B: Toggle En Emisión / Finalizado ─────────────────────────
                 // Solo visible para Series y Anime (las películas no "están en emisión")
@@ -268,7 +307,7 @@ fun AddMediaScreen(
                         .fillMaxWidth()
                         .height(52.dp),
                     shape = RoundedCornerShape(14.dp),
-                    enabled = state.title.isNotBlank() && !state.isSaving && !state.watchedEpisodesError
+                    enabled = !state.isSaving,
                 ) {
                     if (state.isSaving) {
                         CircularProgressIndicator(
