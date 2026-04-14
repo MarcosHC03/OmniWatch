@@ -2,7 +2,7 @@
   <img src="assets/omniwatch-logo.png" alt="Logo de OmniWatch" width="200"/>
 </p>
 
-# OmniWatch 🎬 (v1.1)
+# OmniWatch 🎬 (v1.2)
 
 App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de películas, series y anime de forma privada y sin depender de servicios de terceros.
 
