@@ -25,6 +25,7 @@ import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.ui.WatchListBottomBar
 import com.watchlist.app.viewmodel.CalendarViewModel
 import com.watchlist.app.viewmodel.WeekDay
+import com.watchlist.app.navigation.Screen
 
 // ---------------------------------------------------------------------------
 // Pantalla raíz
@@ -56,8 +57,19 @@ fun CalendarScreen(
                     title = { Text("Calendario", fontWeight = FontWeight.Bold) },
                     actions = {
                         // El buscador que nos robó Claude
-                        IconButton(onClick = { /* TODO: Buscador de estrenos V1.1 */ }) {
-                            Icon(Icons.Filled.Search, contentDescription = "Buscar Estrenos")
+                        IconButton(onClick = { 
+                            navController.navigate(Screen.Discovery.route) {
+                                // Le decimos que limpie el camino hasta el inicio guardando el estado
+                                popUpTo(navController.graph.startDestinationId) { 
+                                    saveState = true 
+                                }
+                                // Evita que se abra la misma pantalla dos veces si tocás rápido
+                                launchSingleTop = true
+                                // Restaura el estado de la pestaña Descubrir (si lo tenía)
+                                restoreState = true
+                            }
+                        }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Buscar estrenos")
                         }
                         IconButton(onClick = { viewModel.refresh() }) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Actualizar")

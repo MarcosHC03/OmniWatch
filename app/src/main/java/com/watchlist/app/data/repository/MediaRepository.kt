@@ -114,8 +114,8 @@ class MediaRepository @Inject constructor(
 
         val entities = allItems.map { item ->
             MediaItemEntity(
-                title = item.anime.title,
-                posterPath = item.anime.images.jpg.imageUrl,
+                title = item.anime.title ?: "Sin título",
+                posterPath = item.anime.images?.jpg?.imageUrl ?: "",
                 mediaType = MediaType.ANIME,
                 watchStatus = when (item.status) {
                     1 -> WatchStatus.WATCHING
@@ -132,28 +132,50 @@ class MediaRepository @Inject constructor(
         dao.insertAll(entities)
     }
 
-    suspend fun searchJikanAnime(query: String): List<TmdbMedia> =
-        runCatching {
+    suspend fun searchJikanAnime(query: String): List<TmdbMedia> {
+        return try {
             val response = jikanApiService.searchAnime(query)
             response.data.map { anime ->
+                val exactDate = anime.aired?.from?.take(10) ?: anime.year?.toString() ?: ""
                 TmdbMedia(
                     id = anime.malId,
-                    title = anime.title,
-                    name = anime.title,
-                    originalTitle = anime.title,
-                    originalName = anime.title,
-                    posterPath = anime.images.jpg.imageUrl,
-                    backdropPath = null,
+                    title = anime.title ?: "Sin título",
+                    name = anime.title ?: "Sin título",
+                    originalTitle = anime.title ?: "",
+                    originalName = anime.title ?: "",
+                    posterPath = anime.images?.jpg?.imageUrl ?: "", 
+                    backdropPath = "",
                     mediaType = "anime",
-                    firstAirDate = anime.year?.toString() ?: "",
-                    releaseDate = anime.year?.toString() ?: "",
+                    firstAirDate = exactDate,
+                    releaseDate = exactDate,
                     overview = "",
                     voteAverage = 0.0,
                     genreIds = emptyList(),
                     totalEpisodes = anime.totalEpisodes
                 )
             }
-        }.getOrDefault(emptyList())
+        } catch (e: Exception) {
+            // EL DETECTIVE ENCUBIERTO: Si la API explota, mandamos el error a la pantalla
+            listOf(
+                TmdbMedia(
+                    id = 0,
+                    title = "❌ ERROR: ${e.javaClass.simpleName}", // Acá veremos qué tipo de error es
+                    name = e.message ?: "Error desconocido",       // Acá veremos el detalle
+                    originalTitle = "",
+                    originalName = "",
+                    posterPath = "",
+                    backdropPath = "",
+                    mediaType = "anime",
+                    firstAirDate = "",
+                    releaseDate = "",
+                    overview = "Ocurrió un error al buscar en Jikan.",
+                    voteAverage = 0.0,
+                    genreIds = emptyList(),
+                    totalEpisodes = 0
+                )
+            )
+        }
+    }
 
     suspend fun exchangeMalCodeForToken(clientId: String, code: String, verifier: String): MalTokenResponse? {
         return try {
@@ -284,4 +306,61 @@ class MediaRepository @Inject constructor(
             e.printStackTrace()
         }
     }
+
+    // ---- Misión v1.5: Populares para Descubrimiento ----
+
+    suspend fun getPopularMoviesAsReleases(): List<TmdbRelease> =
+        runCatching { tmdbApi.getTrendingMovies().results }
+            .getOrDefault(emptyList())
+            .filter { !it.posterPath.isNullOrBlank() }
+            .map { 
+                TmdbRelease(
+                    id           = it.id,
+                    title        = it.title,
+                    name         = it.name,
+                    releaseDate  = it.releaseDate,
+                    firstAirDate = it.firstAirDate,
+                    posterPath   = it.posterPath,
+                    mediaType    = "movie"
+                ) 
+            }
+
+    suspend fun getPopularTvAsReleases(): List<TmdbRelease> =
+        runCatching { tmdbApi.getTrendingTv().results }
+            .getOrDefault(emptyList())
+            .filter { !it.posterPath.isNullOrBlank() }
+            .map { 
+                TmdbRelease(
+                    id           = it.id,
+                    title        = it.title,
+                    name         = it.name,
+                    releaseDate  = it.releaseDate,
+                    firstAirDate = it.firstAirDate,
+                    posterPath   = it.posterPath,
+                    mediaType    = "tv"
+                ) 
+            }
+
+    suspend fun getPopularAnimeAsReleases(): List<TmdbRelease> =
+        runCatching {
+            val response = jikanApiService.getCurrentSeasonAnime()
+            
+            // El filtro ahora usa ?. para no crashear
+            response.data.filter { !it.images?.jpg?.imageUrl.isNullOrBlank() }
+                .map { anime ->
+                    val exactDate = anime.aired?.from?.take(10) ?: anime.year?.toString() ?: ""
+                    
+                    TmdbRelease(
+                        id           = anime.malId,
+                        title        = anime.title ?: "Sin título",
+                        name         = anime.title ?: "Sin título",
+                        releaseDate  = exactDate,
+                        firstAirDate = exactDate,
+                        posterPath   = anime.images?.jpg?.imageUrl,
+                        mediaType    = "anime",
+                        totalEpisodes = anime.totalEpisodes
+                    )
+                }
+                .distinctBy { it.id }
+        }.getOrDefault(emptyList())
 }

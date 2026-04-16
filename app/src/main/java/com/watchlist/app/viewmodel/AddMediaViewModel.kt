@@ -161,28 +161,46 @@ class AddMediaViewModel @Inject constructor(
             else     -> _uiState.value.mediaType
         }
 
-        // Extraer y formatear fecha de la API al formato de display ─────────
-        // TMDB usa `release_date` (películas) o `first_air_date` (series/anime)
-        // MAL/Jikan usa `start_date`; ambos llegan en displayDate o releaseDate del modelo
         val rawDate = when {
             !media.releaseDate.isNullOrBlank()   -> media.releaseDate
             !media.firstAirDate.isNullOrBlank()  -> media.firstAirDate
             else                                 -> null
-        }
-        val formattedDate = rawDate.toDisplayDate()
+        }?.trim()
 
-        val dateParts = formattedDate.split("/")
+        var rDay = ""
+        var rMonth = ""
+        var rYear = ""
+
+        if (!rawDate.isNullOrBlank()) {
+            if (rawDate.length == 4 && rawDate.toIntOrNull() != null) {
+                // ¡El parche para Jikan! Si solo manda el año, lo dejamos así sin inventar días.
+                rYear = rawDate
+            } else {
+                val formattedDate = rawDate.toDisplayDate()
+                val dateParts = formattedDate.split("/")
+                rDay = dateParts.getOrNull(0) ?: ""
+                rMonth = dateParts.getOrNull(1) ?: ""
+                rYear = dateParts.getOrNull(2) ?: ""
+            }
+        }
+
+        // El parche del póster principal para Jikan
+        val finalPoster = if (media.posterPath?.startsWith("http") == true) {
+            media.posterPath
+        } else {
+            media.fullPosterPath
+        }
 
         _uiState.value = _uiState.value.copy(
             title = media.displayTitle,
             overview = media.overview ?: "",
-            posterPath = media.fullPosterPath,
+            posterPath = finalPoster ?: "",
             year = year,
             tmdbId = media.id,
             mediaType = type,
-            releaseDay = dateParts.getOrNull(0) ?: "",
-            releaseMonth = dateParts.getOrNull(1) ?: "",
-            releaseYear = dateParts.getOrNull(2) ?: "",
+            releaseDay = rDay,
+            releaseMonth = rMonth,
+            releaseYear = rYear,
             availableSeasons = 0,
             episodesPerSeason = emptyMap(),
             currentSeason = "1",
@@ -199,14 +217,11 @@ class AddMediaViewModel @Inject constructor(
                 val validSeasons = details.seasons.filter { it.seasonNumber > 0 }
                 val episodesMap = validSeasons.associate { it.seasonNumber to it.episodeCount }
 
-                // Usamos false por defecto para que el usuario lo decida a mano
-                val airing = false
-
                 _uiState.value = _uiState.value.copy(
                     availableSeasons = validSeasons.size,
                     episodesPerSeason = episodesMap,
                     totalEpisodes = (episodesMap[1] ?: 0).toString(),
-                    isAiring = airing
+                    isAiring = false
                 )
             }
         }

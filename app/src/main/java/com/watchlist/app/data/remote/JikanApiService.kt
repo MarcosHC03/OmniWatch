@@ -18,4 +18,8 @@ interface JikanApiService {
     suspend fun searchAnime(
         @Query("q") query: String
     ): JikanAnimeSearchResponse
+
+    @GET("seasons/now")
+    suspend fun getCurrentSeasonAnime()
+    : JikanAnimeSearchResponse
 }

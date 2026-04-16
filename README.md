@@ -2,9 +2,9 @@
   <img src="assets/omniwatch-logo.png" alt="Logo de OmniWatch" width="200"/>
 </p>
 
-# OmniWatch 🎬 (v1.2)
+# 👁️ OmniWatch - Track Your Media
 
-App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de películas, series y anime de forma privada y sin depender de servicios de terceros.
+OmniWatch es una aplicación nativa de Android diseñada para centralizar y organizar el seguimiento de Películas, Series y Animes. Desarrollada con un enfoque "Offline-First", permite a los usuarios gestionar sus listas personales, descubrir nuevos estrenos y llevar un calendario preciso de lanzamientos sin depender de una conexión constante a internet.
 
 ## ✨ Características Principales
 
@@ -18,25 +18,54 @@ App Android nativa en Kotlin + Jetpack Compose para gestionar tu lista de pelíc
   <img src="assets/calendario.jpg" alt="Pantalla Calendario" width="30%">
 </p>
 
-- **Inicio (Muro de Noticias)**: Feed híbrido de noticias de entretenimiento y cultura geek (**Cine PREMIERE, SensaCine, SomosKudasai**) con soporte de imágenes y caché offline.
-- **Mi Lista**: Biblioteca personal optimizada.
-  - **Títulos en Latino**: Integración con TMDB configurada para nombres de Latinoamérica (ej: *Un Show Más*).
-  - **Botón +1**: Incremento rápido de episodios desde la tarjeta principal con límite de seguridad por temporada.
-  - **Sincronización Inteligente**: Importación desde **MyAnimeList** con lógica anti-duplicados y detección automática de estados de emisión.
-  - **Backup Local**: Exportación e importación completa en formato JSON.
-- **Calendario Inteligente**:
-  - *Pestaña "Viendo"*: Agenda semanal automática basada en fechas de estreno reales.
-  - *Pestaña "Por Ver"*: Línea de tiempo cronológica para próximos lanzamientos y títulos ya estrenados.
+* **Gestión de Medios:** Organiza tu contenido en listas de estado ("Por ver", "Viendo", "Visto").
+* **Calendario Inteligente:** Visualiza los próximos episodios y estrenos ordenados por fecha y día de la semana.
+* **Soporte Multi-Plataforma:** Etiqueta en qué servicio de streaming (Netflix, Crunchyroll, Prime Video, etc.) estás viendo cada título.
+* **Modo Oscuro Nativo:** Interfaz diseñada con Material Design 3, optimizada para la fatiga visual.
 
-## 🛠 Stack Técnico
-- **UI**: Kotlin + Jetpack Compose (Material Design 3)
-- **Arquitectura**: MVVM + Repository Pattern (Single Source of Truth)
-- **Base de Datos**: Room (SQLite con migraciones de datos)
-- **Red**: Retrofit + OkHttp (REST APIs y XML/RSS)
-- **Imágenes**: Coil (Carga asíncrona de pósters)
-- **Inyección de Dependencias**: Dagger Hilt
-- **Navegación**: Navigation Compose
+### 🚀 Novedades en v1.5 (Discovery Update)
+* **Centro de Descubrimiento:** Nueva pestaña para explorar tendencias de Cine, Series y Anime integrando TMDB y Jikan (MyAnimeList).
+* **Búsqueda Global Inteligente:** Buscador unificado con *Debounce* (Coroutines) que optimiza las llamadas a las APIs, filtrando resultados en tiempo real sin saturar la red.
+* **Quick Save (Guardado Rápido):** Guardado a un toque desde la pestaña "Descubrir", auto-completando y persistiendo fechas exactas de estreno y total de episodios.
 
+---
+
+## 🛠️ Stack Tecnológico y Arquitectura
+
+El proyecto sigue los lineamientos recomendados por Google (Modern Android Development):
+
+* **UI:** Jetpack Compose (100% declarativo) + Material Design 3.
+* **Arquitectura:** MVVM (Model-View-ViewModel) + Clean Architecture principles.
+* **Concurrencia y Estado:** Kotlin Coroutines & StateFlow.
+* **Base de Datos Local:** Room Database (Offline-first approach).
+* **Red:** Retrofit2 + OkHttp (Consumo de APIs REST: TMDB, Jikan, MyAnimeList Oficial).
+* **Inyección de Dependencias:** Dagger Hilt.
+* **Imágenes:** Coil (Carga asíncrona y caché de imágenes).
+
+---
+
+## 📂 Estructura del Proyecto
+
+La aplicación está modularizada por capas (features) dentro del paquete `com.watchlist.app` para asegurar una clara separación de responsabilidades:
+
+```text
+📦 app/src/main/java/com/watchlist/app
+ ┣ 📂 data
+ ┃ ┣ 📂 local       # Entidades de Room, DAOs y Database
+ ┃ ┣ 📂 remote      # Servicios de Retrofit (TMDB, Jikan, News) y Modelos DTO
+ ┃ ┗ 📂 repository  # Única fuente de verdad (Single Source of Truth)
+ ┣ 📂 di            # Módulos de Inyección de Dependencias (Hilt)
+ ┣ 📂 navigation    # NavHost, Rutas y Configuración de Jetpack Navigation
+ ┣ 📂 ui            # Pantallas (Screens) y componentes de UI
+ ┃ ┣ 📂 addmedia
+ ┃ ┣ 📂 calendar
+ ┃ ┣ 📂 discovery
+ ┃ ┣ 📂 home
+ ┃ ┣ 📂 mylist
+ ┃ ┗ 📂 theme       # Colores, Tipografías y Formas (Material 3)
+ ┣ 📂 utils         # Clases de ayuda y formateadores (Ej: Fechas)
+ ┗ 📂 viewmodel     # Lógica de presentación y manejo de estado (StateFlow)
+```
 ---
 
 ## 📦 Descargar e Instalar (APK)
@@ -67,26 +96,3 @@ TMDB_API_KEY=tu_token_jwt_largo_aqui
 3. Esperá que Gradle sincronice las dependencias.
 4. Ejecutá en el emulador o dispositivo físico.
 
----
-
-## 📁 Estructura del Proyecto
-```text
-app/src/main/java/com/watchlist/app/
-├── data/
-│   ├── local/        # Dao, Entities (Room) y WatchListDatabase
-│   ├── remote/       # Servicios de TMDB, Jikan y RssApiService
-│   └── repository/   # MediaRepository (Single Source of Truth)
-├── di/               # AppModule (Configuración de Hilt)
-├── navigation/       # WatchListNavHost y Bottom Navigation
-├── ui/
-│   ├── home/         # Pantalla de Inicio (Noticias RSS)
-│   ├── mylist/       # Pantalla de la biblioteca personal
-│   ├── calendar/     # Calendario Inteligente (Viendo / Por ver)
-│   ├── addmedia/     # Buscador TMDB/MAL y formulario de edición
-│   ├── theme/        # Colores, Tipografía y Tema Compose
-│   └── CommonComponents.kt
-├── viewmodel/        # Lógica de presentación (StateFlow)
-├── utils/            # Utilidades (Import/Export JSON, parseo de fechas)
-├── MainActivity.kt
-└── WatchListApplication.kt
-```

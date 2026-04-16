@@ -28,17 +28,22 @@ data class JikanAnimeSearchResponse(
 // Los datos puros de la serie/película
 data class JikanAnimeNode(
     @SerializedName("mal_id") val malId: Int,
-    @SerializedName("title") val title: String,
-    @SerializedName("images") val images: JikanImages,
+    @SerializedName("title") val title: String?,
+    @SerializedName("images") val images: JikanImages?,
     @SerializedName("type") val type: String?,
     @SerializedName("episodes") val totalEpisodes: Int?,
-    @SerializedName("year") val year: Int?
+    @SerializedName("year") val year: Int?,
+    @SerializedName("aired") val aired: JikanAired?
 )
 
 data class JikanImages(
-    @SerializedName("jpg") val jpg: JikanJpg
+    @SerializedName("jpg") val jpg: JikanJpg?
 )
 
 data class JikanJpg(
-    @SerializedName("image_url") val imageUrl: String
+    @SerializedName("image_url") val imageUrl: String?
+)
+
+data class JikanAired(
+    @SerializedName("from") val from: String?
 )

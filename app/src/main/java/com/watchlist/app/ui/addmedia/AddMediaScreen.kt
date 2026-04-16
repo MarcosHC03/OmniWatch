@@ -460,9 +460,17 @@ fun TmdbResultItem(media: TmdbMedia, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (media.fullPosterPath.isNotBlank()) {
+        // Lógica blindada para la imagen
+        val path = media.posterPath ?: ""
+        val imageUrl = when {
+            path.isBlank() -> "" // Si no hay ruta, queda vacío
+            path.startsWith("http") -> path // Si es Jikan, usamos el link directo
+            else -> "https://image.tmdb.org/t/p/w342$path" // Si es TMDB, le pegamos el prefijo
+        }
+
+        if (imageUrl.isNotBlank()) {
             AsyncImage(
-                model = media.fullPosterPath,
+                model = imageUrl,
                 contentDescription = null,
                 modifier = Modifier
                     .width(34.dp)

@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavHostController
@@ -17,10 +18,12 @@ import com.watchlist.app.ui.addmedia.AddMediaScreen
 import com.watchlist.app.ui.home.HomeScreen
 import com.watchlist.app.ui.mylist.MyListScreen
 import com.watchlist.app.ui.calendar.CalendarScreen
+import com.watchlist.app.ui.discovery.DiscoveryScreen
 import android.net.Uri
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
+    object Discovery : Screen("discovery")
     object MyList : Screen("my_list")
     object Calendar : Screen("calendar")
     object AddMedia : Screen("add_media?itemId={itemId}&query={query}") {
@@ -35,12 +38,14 @@ sealed class BottomNavItem(
     val icon: ImageVector
 ) {
     object Home : BottomNavItem(Screen.Home, "Inicio", Icons.Filled.Home)
+    object Discovery : BottomNavItem(Screen.Discovery, "Descubrí", Icons.Filled.Search)
     object MyList : BottomNavItem(Screen.MyList, "Mi lista", Icons.AutoMirrored.Filled.List)
     object Calendar : BottomNavItem(Screen.Calendar, "Calendario", Icons.Filled.DateRange)
 }
 
 val bottomNavItems = listOf(
     BottomNavItem.Home,
+    BottomNavItem.Discovery,
     BottomNavItem.MyList,
     BottomNavItem.Calendar
 )
@@ -55,6 +60,9 @@ fun WatchListNavHost(
     ) {
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
+        }
+        composable(Screen.Discovery.route) {
+            DiscoveryScreen(navController = navController)
         }
         composable(Screen.MyList.route) {
             MyListScreen(navController = navController)

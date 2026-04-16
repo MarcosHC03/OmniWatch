@@ -48,10 +48,12 @@ data class TmdbRelease(
     @SerializedName("release_date") val releaseDate: String?,
     @SerializedName("first_air_date") val firstAirDate: String?,
     @SerializedName("poster_path") val posterPath: String?,
-    @SerializedName("media_type") val mediaType: String?
+    @SerializedName("media_type") val mediaType: String?,
+    val totalEpisodes: Int? = null
 ) {
     val displayTitle get() = title ?: name ?: ""
     val displayDate get() = releaseDate ?: firstAirDate ?: ""
+
 }
 
 // ---- NewsAPI Models ----
