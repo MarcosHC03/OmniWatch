@@ -11,11 +11,13 @@ OmniWatch es una aplicación nativa de Android diseñada para centralizar y orga
 <h2 align="center">📱 Vistazo a la App</h2>
 
 <p align="center">
-  <img src="assets/home.jpg" alt="Pantalla de Inicio" width="30%">
+  <img src="assets/home.jpg" alt="Pantalla de Inicio" width="20%">
   &nbsp; &nbsp;
-  <img src="assets/lista.jpg" alt="Pantalla Mi Lista" width="30%">
+  <img src="assets/discovery.jpg" alt="Pantalla Descubrí" width="20%">
   &nbsp; &nbsp;
-  <img src="assets/calendario.jpg" alt="Pantalla Calendario" width="30%">
+  <img src="assets/lista.jpg" alt="Pantalla Mi Lista" width="20%">
+  &nbsp; &nbsp;
+  <img src="assets/calendario.jpg" alt="Pantalla Calendario" width="20%">
 </p>
 
 * **Gestión de Medios:** Organiza tu contenido en listas de estado ("Por ver", "Viendo", "Visto").
