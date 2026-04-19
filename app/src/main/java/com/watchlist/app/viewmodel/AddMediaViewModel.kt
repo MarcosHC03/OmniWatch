@@ -460,4 +460,49 @@ class AddMediaViewModel @Inject constructor(
             }
         }
     }
+
+    // ---- Carga desde el Caché de Descubrimiento (Offline First) ----
+
+    fun loadFromCache(cacheId: Int) {
+        if (cacheId <= 0) return
+        
+        viewModelScope.launch {
+            // Suponiendo que agregaste un método en tu repository para buscar en el caché
+            val cachedItem = repository.getDiscoveryCacheItem(cacheId) ?: return@launch
+            
+            // Reutilizamos tu lógica de fechas
+            val formattedDate = cachedItem.releaseDate.toDisplayDate()
+            val dateParts = formattedDate.split("/")
+            val rDay = dateParts.getOrNull(0) ?: ""
+            val rMonth = dateParts.getOrNull(1) ?: ""
+            val rYear = dateParts.getOrNull(2) ?: ""
+
+            // Pasamos los datos del caché al estado de la UI
+            _uiState.value = _uiState.value.copy(
+                title = cachedItem.title,
+                overview = cachedItem.overview,
+                posterPath = cachedItem.posterPath,
+                mediaType = cachedItem.mediaType,
+                tmdbId = cachedItem.tmdbId,
+                year = rYear.toIntOrNull() ?: 0,
+                releaseDay = rDay,
+                releaseMonth = rMonth,
+                releaseYear = rYear,
+                availableSeasons = 0,
+                episodesPerSeason = emptyMap(),
+                currentSeason = "1",
+                totalEpisodes = "", // Lo dejamos vacío para que el usuario o la API (si hay red) lo complete
+                watchedEpisodes = "0",
+                watchedEpisodesError = false,
+                isSearching = false
+            )
+
+            // Si es una serie y tenemos internet, podríamos intentar buscar las temporadas,
+            // pero ya le dejamos al usuario todo el texto principal cargado offline.
+            if (cachedItem.mediaType == MediaType.SERIES) {
+                // Tu función existente para buscar temporadas en segundo plano (si hay red)
+                fetchEpisodesForSeason(cachedItem.tmdbId, 1)
+            }
+        }
+    }
 }

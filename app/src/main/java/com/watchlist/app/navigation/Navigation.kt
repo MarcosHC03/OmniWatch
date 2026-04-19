@@ -26,9 +26,9 @@ sealed class Screen(val route: String) {
     object Discovery : Screen("discovery")
     object MyList : Screen("my_list")
     object Calendar : Screen("calendar")
-    object AddMedia : Screen("add_media?itemId={itemId}&query={query}") {
-        fun createRoute(itemId: Long = -1L, query: String = "") =
-            "add_media?itemId=$itemId&query=${Uri.encode(query)}"
+    object AddMedia : Screen("add_media?itemId={itemId}&cacheId={cacheId}&query={query}") {
+        fun createRoute(itemId: Long = -1L, cacheId: Int = -1, query: String = "") =
+            "add_media?itemId=$itemId&cacheId=$cacheId&query=${Uri.encode(query)}"
     }
 }
 
@@ -77,6 +77,10 @@ fun WatchListNavHost(
                     type = NavType.LongType
                     defaultValue = -1L
                 },
+                navArgument("cacheId") {
+                    type = NavType.IntType
+                    defaultValue = -1
+                },
                 navArgument("query") {
                     type = NavType.StringType
                     defaultValue = ""
@@ -84,9 +88,11 @@ fun WatchListNavHost(
             )
         ) { backStackEntry ->
             val itemId = backStackEntry.arguments?.getLong("itemId") ?: -1L
+            val cacheId = backStackEntry.arguments?.getInt("cacheId") ?: -1
             val query  = backStackEntry.arguments?.getString("query") ?: ""
             AddMediaScreen(
                 itemId = itemId,
+                cacheId = cacheId,
                 autoSearchQuery = query,
                 onNavigateBack = { navController.popBackStack() }
             )

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
+import com.watchlist.app.data.local.entities.DiscoveryCacheEntity
 import com.watchlist.app.data.remote.TmdbRelease
 import com.watchlist.app.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,8 +34,8 @@ data class DiscoveryUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
 
-    // IDs de releases ya guardados en "Por Ver" — para mostrar el check
-    val savedReleaseIds: Set<Int> = emptySet()
+    // Mapa que asocia: tmdbId -> itemId (de tu base de datos local)
+    val savedReleaseMap: Map<Int, Long> = emptyMap()
 )
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,7 @@ class DiscoveryViewModel @Inject constructor(
     private val apiFormat     = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
     init {
+        observeLocalDatabase()
         loadContent()
     }
 
@@ -64,14 +66,17 @@ class DiscoveryViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                // 1. Buscamos TODOS los tmdbId que ya tenés en tu lista
-                val localItems = repository.getAllItemsOnce()
-                val alreadySavedIds = localItems.map { it.tmdbId }.toSet()
-
-                // 2. Traemos las tendencias
+                // 1. Traemos las tendencias
                 val movies = repository.getPopularMoviesAsReleases()
                 val tv     = repository.getPopularTvAsReleases()
                 val anime  = repository.getPopularAnimeAsReleases()
+                
+                // --- GUARDAMOS EN EL CACHÉ OFFLINE ---
+                val cacheList = mutableListOf<DiscoveryCacheEntity>()
+                cacheList.addAll(mapToCache(movies, MediaType.MOVIE))
+                cacheList.addAll(mapToCache(tv, MediaType.SERIES))
+                cacheList.addAll(mapToCache(anime, MediaType.ANIME))
+                repository.saveToDiscoveryCache(cacheList)
                 
                 _state.update { s ->
                     s.copy(
@@ -81,7 +86,6 @@ class DiscoveryViewModel @Inject constructor(
                         filteredMovies = movies, 
                         filteredTv     = tv,
                         filteredAnime  = anime,
-                        savedReleaseIds = alreadySavedIds,
                         isLoading      = false
                     )
                 }
@@ -143,6 +147,13 @@ class DiscoveryViewModel @Inject constructor(
                     .map { TmdbRelease(id = it.id, title = it.title, name = it.name, releaseDate = it.releaseDate, firstAirDate = it.firstAirDate, posterPath = it.posterPath, mediaType = "anime") }
                     .distinctBy { it.id }
 
+
+                val searchCache = mutableListOf<DiscoveryCacheEntity>()
+                searchCache.addAll(mapToCache(mappedMovies, MediaType.MOVIE))
+                searchCache.addAll(mapToCache(mappedTv, MediaType.SERIES))
+                searchCache.addAll(mapToCache(mappedAnime, MediaType.ANIME))
+                repository.saveToDiscoveryCache(searchCache)
+
                 // Actualizamos la UI con los resultados reales
                 _state.update { 
                     it.copy(
@@ -184,10 +195,10 @@ class DiscoveryViewModel @Inject constructor(
                 year            = parseYear(release.displayDate),
                 tmdbId          = release.id
             )
-            repository.insertItem(entity)
+            val newId = repository.insertItem(entity)
 
-            // Marcamos el ID como guardado en vivo
-            _state.update { it.copy(savedReleaseIds = it.savedReleaseIds + release.id) }
+            // Agregamos el nuevo ID al mapa en vivo para que la UI se actualice
+            _state.update { it.copy(savedReleaseMap = it.savedReleaseMap + (release.id to newId)) }
         }
     }
 
@@ -217,6 +228,49 @@ class DiscoveryViewModel @Inject constructor(
         return runCatching {
             LocalDate.parse(trimmed, apiFormat).year
         }.getOrDefault(0)
+    }
+
+    // -------------------------------------------------------------------------
+    // Helper para Mapear a Caché
+    // -------------------------------------------------------------------------
+    private fun mapToCache(releases: List<TmdbRelease>, mediaType: MediaType): List<DiscoveryCacheEntity> {
+        return releases.map { release ->
+            
+            // EL FIX: Armamos la URL completa acá mismo, igual que en el quickSave
+            val finalPoster = if (release.posterPath?.startsWith("http") == true) {
+                release.posterPath
+            } else {
+                release.posterPath?.let { "https://image.tmdb.org/t/p/w500$it" } ?: ""
+            }
+
+            DiscoveryCacheEntity(
+                tmdbId = release.id,
+                title = release.displayTitle,
+                overview = "", 
+                posterPath = finalPoster, // <-- Usamos la URL arreglada
+                mediaType = mediaType,
+                releaseDate = formatApiDate(release.displayDate)
+            )
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Observador de la Base de Datos Local (Tiempo Real)
+    // -------------------------------------------------------------------------
+    private fun observeLocalDatabase() {
+        viewModelScope.launch {
+            // Usamos getAllItems() que devuelve un Flow, en vez de getAllItemsOnce()
+            repository.getAllItems().collect { localItems ->
+                
+                // Cada vez que insertes, edites o borres algo en "Mi Lista" desde CUALQUIER pantalla,
+                // este bloque se va a ejecutar solito.
+                
+                val savedMap = localItems.filter { it.tmdbId != 0 }.associate { it.tmdbId to it.id }
+                
+                // Actualizamos el mapa en vivo de forma silenciosa
+                _state.update { it.copy(savedReleaseMap = savedMap) }
+            }
+        }
     }
 
     fun clearError() {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -31,6 +32,7 @@ import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.remote.TmdbRelease
 import com.watchlist.app.ui.WatchListBottomBar
 import com.watchlist.app.viewmodel.DiscoveryViewModel
+import com.watchlist.app.navigation.Screen
 
 // ---------------------------------------------------------------------------
 // Pantalla principal
@@ -133,15 +135,26 @@ fun DiscoveryScreen(
                     } else {
                         ReleaseGrid(
                             releases      = list,
-                            savedIds      = state.savedReleaseIds,
+                            savedMap      = state.savedReleaseMap,
                             mediaType     = mediaType,
                             onQuickSave   = { release ->
                                 viewModel.quickSave(release, mediaType)
-                                Toast.makeText(
-                                    context,
-                                    "Agregado a Por Ver",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                Toast.makeText(context, "Agregado a Por Ver", Toast.LENGTH_SHORT).show()
+                            },
+                            onClick = { release ->
+                                val existingItemId = state.savedReleaseMap[release.id]
+                                
+                                if (existingItemId != null) {
+                                    // Ya está en Mi Lista -> Abrimos en modo Edición para no pisar datos
+                                    navController.navigate(
+                                        Screen.AddMedia.createRoute(itemId = existingItemId)
+                                    )
+                                } else {
+                                    // Es un estreno nuevo -> Abrimos leyendo del Caché
+                                    navController.navigate(
+                                        Screen.AddMedia.createRoute(cacheId = release.id)
+                                    )
+                                }
                             }
                         )
                     }
@@ -158,9 +171,10 @@ fun DiscoveryScreen(
 @Composable
 private fun ReleaseGrid(
     releases: List<TmdbRelease>,
-    savedIds: Set<Int>,
+    savedMap: Map<Int, Long>,
     mediaType: MediaType,
-    onQuickSave: (TmdbRelease) -> Unit
+    onQuickSave: (TmdbRelease) -> Unit,
+    onClick: (TmdbRelease) -> Unit
 ) {
     LazyVerticalGrid(
         columns             = GridCells.Fixed(2),
@@ -175,8 +189,9 @@ private fun ReleaseGrid(
         ) { release ->
             ReleaseCard(
                 release     = release,
-                isSaved     = release.id in savedIds,
-                onQuickSave = { onQuickSave(release) }
+                isSaved     = savedMap.containsKey(release.id),
+                onQuickSave = { onQuickSave(release) },
+                onClick     = { onClick(release) }
             )
         }
     }
@@ -190,7 +205,8 @@ private fun ReleaseGrid(
 private fun ReleaseCard(
     release: TmdbRelease,
     isSaved: Boolean,
-    onQuickSave: () -> Unit
+    onQuickSave: () -> Unit,
+    onClick: () -> Unit
 ) {
     Card(
         shape     = RoundedCornerShape(14.dp),
@@ -198,7 +214,9 @@ private fun ReleaseCard(
         colors    = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
     ) {
         Box {
             /// ── Póster ───────────────────────────────────────────────────────

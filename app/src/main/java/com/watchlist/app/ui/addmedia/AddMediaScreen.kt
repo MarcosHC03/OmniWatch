@@ -36,16 +36,18 @@ import com.watchlist.app.viewmodel.AddMediaViewModel
 fun AddMediaScreen(
     itemId: Long,
     autoSearchQuery: String = "",
+    cacheId: Int = -1,
     onNavigateBack: () -> Unit,
     viewModel: AddMediaViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(itemId) {
-        if (itemId > 0L) viewModel.loadItemForEditing(itemId)
-    }
-    LaunchedEffect(autoSearchQuery) {
-        if (autoSearchQuery.isNotBlank() && itemId <= 0L) {
+    LaunchedEffect(itemId, autoSearchQuery, cacheId) {
+        if (itemId > 0) {
+            viewModel.loadItemForEditing(itemId)
+        } else if (cacheId > 0) {
+            viewModel.loadFromCache(cacheId) 
+        } else if (autoSearchQuery.isNotBlank()) {
             viewModel.autoSearchAndSelect(autoSearchQuery)
         }
     }

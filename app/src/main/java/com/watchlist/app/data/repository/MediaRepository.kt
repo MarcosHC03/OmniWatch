@@ -2,9 +2,11 @@ package com.watchlist.app.data.repository
 
 import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.local.dao.NewsDao
+import com.watchlist.app.data.local.dao.DiscoveryCacheDao
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
+import com.watchlist.app.data.local.entities.DiscoveryCacheEntity
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.NewsArticle
 import com.watchlist.app.data.remote.TmdbApiService
@@ -25,13 +27,14 @@ import javax.inject.Singleton
 @Singleton
 class MediaRepository @Inject constructor(
     private val dao: MediaItemDao,
+    private val discoveryCacheDao: DiscoveryCacheDao,
     private val tmdbApi: TmdbApiService,
     private val newsApi: NewsApiService,
     private val jikanApiService: JikanApiService,
     private val malApi: MalApiService,
     private val malDataApi: com.watchlist.app.data.remote.MalDataApiService,
     private val newsDao: NewsDao,
-    private val rssApi: RssApiService
+    private val rssApi: RssApiService,
 ) {
     // ---- Local DB ----
 
@@ -363,4 +366,19 @@ class MediaRepository @Inject constructor(
                 }
                 .distinctBy { it.id }
         }.getOrDefault(emptyList())
+
+    // ---- Memoria / Caché de Descubrimiento (Offline First) ----
+
+    // Esta es la función que AddMediaViewModel llama para leer los datos rápido sin internet
+    suspend fun getDiscoveryCacheItem(id: Int): DiscoveryCacheEntity? {
+        return discoveryCacheDao.getById(id)
+    }
+
+    // Esta función la va a usar DiscoveryViewModel para guardar las tarjetas que baja de internet
+    suspend fun saveToDiscoveryCache(items: List<DiscoveryCacheEntity>) {
+        // Por si acaso, limpiamos la basura vieja primero para no llenar el celu de datos inútiles
+        discoveryCacheDao.clearCache() 
+        // Y guardamos los estrenos fresquitos
+        discoveryCacheDao.insertAll(items)
+    }
 }

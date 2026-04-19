@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.watchlist.app.BuildConfig
 import com.watchlist.app.data.local.WatchListDatabase
 import com.watchlist.app.data.local.dao.MediaItemDao
+import com.watchlist.app.data.local.dao.DiscoveryCacheDao
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.MalApiService
@@ -40,6 +41,10 @@ object AppModule {
     
     @Provides
     fun provideNewsDao(db: WatchListDatabase): com.watchlist.app.data.local.dao.NewsDao = db.newsDao()
+    
+    @Provides
+    fun provideDiscoveryCacheDao(db: WatchListDatabase): DiscoveryCacheDao = db.discoveryCacheDao()
+
     //@Provides
     //fun provideRssApiService(): RssApiService =
     //    Retrofit.Builder()
