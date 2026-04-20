@@ -25,9 +25,10 @@ OmniWatch es una aplicación nativa de Android diseñada para centralizar y orga
 * **Soporte Multi-Plataforma:** Etiqueta en qué servicio de streaming (Netflix, Crunchyroll, Prime Video, etc.) estás viendo cada título.
 * **Modo Oscuro Nativo:** Interfaz diseñada con Material Design 3, optimizada para la fatiga visual.
 
-### 🚀 Novedades en v1.5 (Discovery Update)
-* **Centro de Descubrimiento:** Nueva pestaña para explorar tendencias de Cine, Series y Anime integrando TMDB y Jikan (MyAnimeList).
+### 🚀 Novedades de la Discovery Update
+* **Centro de Descubrimiento:** Nueva pestaña para explorar tendencias de Cine, Series y Anime integrando TMDB y Jikan (MyAnimeList) con memoria cache para uso offline.
 * **Búsqueda Global Inteligente:** Buscador unificado con *Debounce* (Coroutines) que optimiza las llamadas a las APIs, filtrando resultados en tiempo real sin saturar la red.
+* **Guardado Editable:** Tocando las tarjetas de los elemntos vamos a la pantalla _Agregar_ o _Editar_ (si ya esta guardado) con los datos de la tarjeta ya importados.
 * **Quick Save (Guardado Rápido):** Guardado a un toque desde la pestaña "Descubrir", auto-completando y persistiendo fechas exactas de estreno y total de episodios.
 
 ---
