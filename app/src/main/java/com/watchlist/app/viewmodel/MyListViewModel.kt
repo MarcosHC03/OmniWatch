@@ -10,6 +10,9 @@ import com.google.gson.reflect.TypeToken
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
+import com.watchlist.app.data.local.entities.PrintMediaEntity
+import com.watchlist.app.data.local.entities.PrintType
+import com.watchlist.app.data.local.entities.ReadStatus
 import com.watchlist.app.data.repository.MediaRepository
 import com.watchlist.app.BuildConfig
 import com.watchlist.app.utils.AuthUtils
@@ -20,10 +23,19 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import android.content.Intent
+enum class ListMode { AUDIOVISUAL, PRINTED }
 
 data class MyListUiState(
+    val listMode: ListMode = ListMode.AUDIOVISUAL, // <-- *NUEVO* Controla el Toggle
+    
+    // Listas y selecciones AUDIOVISUALES
     val items: List<MediaItemEntity> = emptyList(),
     val selectedTab: MediaType = MediaType.SERIES,
+    
+    // Listas y selecciones IMPRESAS
+    val printItems: List<PrintMediaEntity> = emptyList(),
+    val selectedPrintTab: PrintType = PrintType.COMIC,
+    
     val filterStatus: WatchStatus? = null,
     val searchQuery: String = "",
 
@@ -40,7 +52,9 @@ data class MyListUiState(
 
 // Estado interno compacto para evitar el límite de 5 args en combine()
 private data class InternalState(
+    val mode: ListMode = ListMode.AUDIOVISUAL,
     val tab: MediaType = MediaType.SERIES,
+    val printTab: PrintType = PrintType.COMIC,
     val status: WatchStatus? = null,
     val query: String = "",
     val isImporting: Boolean = false,
@@ -64,29 +78,62 @@ class MyListViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<MyListUiState> = _state
         .flatMapLatest { s ->
-            val itemsFlow = if (s.query.isBlank()) {
-                if (s.status != null)
-                    repository.getItemsByType(s.tab)
-                        .map { list -> list.filter { it.watchStatus == s.status } }
-                else
-                    repository.getItemsByType(s.tab)
+            if (s.mode == ListMode.AUDIOVISUAL) {
+                val itemsFlow = if (s.query.isBlank()) {
+                    if (s.status != null)
+                        repository.getItemsByType(s.tab).map { list -> list.filter { it.watchStatus == s.status } }
+                    else
+                        repository.getItemsByType(s.tab)
+                } else {
+                    repository.searchItems(s.query).map { list -> list.filter { it.mediaType == s.tab } }
+                }
+                itemsFlow.map { items ->
+                    MyListUiState(
+                        listMode = s.mode,
+                        items = items,
+                        selectedTab = s.tab,
+                        filterStatus = s.status,
+                        searchQuery = s.query,
+                        isImporting = s.isImporting,
+                        importSuccessMessage = s.importSuccess,
+                        importErrorMessage = s.importError,
+                        isBackupProcessing = s.isBackupProcessing,
+                        backupSuccessMessage = s.backupSuccess,
+                        backupErrorMessage = s.backupError
+                    )
+                }
             } else {
-                repository.searchItems(s.query)
-                    .map { list -> list.filter { it.mediaType == s.tab } }
-            }
-            itemsFlow.map { items ->
-                MyListUiState(
-                    items = items,
-                    selectedTab = s.tab,
-                    filterStatus = s.status,
-                    searchQuery = s.query,
-                    isImporting = s.isImporting,
-                    importSuccessMessage = s.importSuccess,
-                    importErrorMessage = s.importError,
-                    isBackupProcessing = s.isBackupProcessing,
-                    backupSuccessMessage = s.backupSuccess,
-                    backupErrorMessage = s.backupError
-                )
+                // --- NUEVA LÓGICA PARA CÓMICS Y MANGAS ---
+                repository.getPrintItemsByType(s.printTab).map { items ->
+                    
+                    // Mapeamos el estado audiovisual al estado de lectura para poder filtrar
+                    val mappedStatus = when (s.status) {
+                        WatchStatus.WATCHING -> ReadStatus.READING
+                        WatchStatus.COMPLETED -> ReadStatus.COMPLETED
+                        WatchStatus.PLANNED -> ReadStatus.PLANNED
+                        null -> null
+                    }
+                    
+                    val filteredItems = if (mappedStatus != null) {
+                        items.filter { it.status == mappedStatus }
+                    } else {
+                        items
+                    }
+
+                    MyListUiState(
+                        listMode = s.mode,
+                        printItems = filteredItems,
+                        selectedPrintTab = s.printTab,
+                        filterStatus = s.status,
+                        searchQuery = s.query,
+                        isImporting = s.isImporting,
+                        importSuccessMessage = s.importSuccess,
+                        importErrorMessage = s.importError,
+                        isBackupProcessing = s.isBackupProcessing,
+                        backupSuccessMessage = s.backupSuccess,
+                        backupErrorMessage = s.backupError
+                    )
+                }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MyListUiState())
@@ -94,6 +141,8 @@ class MyListViewModel @Inject constructor(
     // ---- Tabs / filtros / búsqueda ----
 
     fun selectTab(type: MediaType) { _state.update { it.copy(tab = type) } }
+    fun toggleListMode() { _state.update { it.copy(mode = if (it.mode == ListMode.AUDIOVISUAL) ListMode.PRINTED else ListMode.AUDIOVISUAL) } }
+    fun selectPrintTab(type: PrintType) { _state.update { it.copy(printTab = type) } }
     fun setFilter(status: WatchStatus?) { _state.update { it.copy(status = status) } }
     fun setSearch(query: String) { _state.update { it.copy(query = query) } }
 
@@ -259,4 +308,16 @@ class MyListViewModel @Inject constructor(
             )
         }
     }
+
+    fun deletePrintItem(item: PrintMediaEntity) {
+        viewModelScope.launch { repository.deletePrintItem(item) }
+    }
+
+    /*fun plusOnePage(item: PrintMediaEntity) {
+        viewModelScope.launch {
+            repository.updatePrintItem(
+                item.copy(currentPage = item.currentPage + 1)
+            )
+        }
+    }*/
 }

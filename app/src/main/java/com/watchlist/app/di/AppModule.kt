@@ -6,6 +6,7 @@ import com.watchlist.app.BuildConfig
 import com.watchlist.app.data.local.WatchListDatabase
 import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.local.dao.DiscoveryCacheDao
+import com.watchlist.app.data.local.dao.PrintMediaDao
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.MalApiService
@@ -44,6 +45,11 @@ object AppModule {
     
     @Provides
     fun provideDiscoveryCacheDao(db: WatchListDatabase): DiscoveryCacheDao = db.discoveryCacheDao()
+
+    @Provides
+    fun providePrintMediaDao(db: WatchListDatabase): PrintMediaDao {
+        return db.printMediaDao()
+    }
 
     //@Provides
     //fun provideRssApiService(): RssApiService =

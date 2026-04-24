@@ -47,3 +47,28 @@ data class JikanJpg(
 data class JikanAired(
     @SerializedName("from") val from: String?
 )
+
+// La respuesta general que envuelve la lista
+data class JikanMangaSearchResponse(
+    val data: List<JikanManga>
+)
+
+// El molde de cada manga individual
+data class JikanManga(
+    @SerializedName("mal_id") val malId: Int,
+    val title: String?,
+    @SerializedName("title_japanese") val titleJapanese: String?,
+    
+    val images: JikanImages?,
+    
+    val synopsis: String?,
+    val authors: List<JikanAuthor>?, // Los autores vienen en una lista
+    val volumes: Int?,
+    val chapters: Int?
+)
+
+// El molde para el Autor
+data class JikanAuthor(
+    @SerializedName("mal_id") val malId: Int,
+    val name: String?
+)

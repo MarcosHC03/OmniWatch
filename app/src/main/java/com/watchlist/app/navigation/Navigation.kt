@@ -19,6 +19,8 @@ import com.watchlist.app.ui.home.HomeScreen
 import com.watchlist.app.ui.mylist.MyListScreen
 import com.watchlist.app.ui.calendar.CalendarScreen
 import com.watchlist.app.ui.discovery.DiscoveryScreen
+import com.watchlist.app.ui.addprintmedia.AddPrintMediaScreen
+import com.watchlist.app.ui.printdetails.PrintDetailsScreen
 import android.net.Uri
 
 sealed class Screen(val route: String) {
@@ -29,6 +31,12 @@ sealed class Screen(val route: String) {
     object AddMedia : Screen("add_media?itemId={itemId}&cacheId={cacheId}&query={query}") {
         fun createRoute(itemId: Long = -1L, cacheId: Int = -1, query: String = "") =
             "add_media?itemId=$itemId&cacheId=$cacheId&query=${Uri.encode(query)}"
+    }
+    object AddPrintMedia : Screen("add_print_media?itemId={itemId}") {
+        fun createRoute(itemId: Long = -1L) = "add_print_media?itemId=$itemId"
+    }
+    object PrintDetails : Screen("print_details/{franchiseId}") {
+        fun createRoute(franchiseId: Long) = "print_details/$franchiseId"
     }
 }
 
@@ -94,6 +102,30 @@ fun WatchListNavHost(
                 itemId = itemId,
                 cacheId = cacheId,
                 autoSearchQuery = query,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.AddPrintMedia.route,
+            arguments = listOf(
+                navArgument("itemId") { type = NavType.LongType; defaultValue = -1L }
+            )
+        ) { backStackEntry ->
+            val itemId = backStackEntry.arguments?.getLong("itemId") ?: -1L
+            AddPrintMediaScreen(
+                itemId = itemId,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PrintDetails.route,
+            arguments = listOf(
+                navArgument("franchiseId") { type = NavType.LongType }
+            )
+        ) {
+            PrintDetailsScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

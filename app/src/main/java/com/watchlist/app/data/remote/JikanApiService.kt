@@ -22,4 +22,10 @@ interface JikanApiService {
     @GET("seasons/now")
     suspend fun getCurrentSeasonAnime()
     : JikanAnimeSearchResponse
+
+    // Buscador general de Manga
+    @GET("manga")
+    suspend fun searchManga(
+        @Query("q") query: String
+    ): JikanMangaSearchResponse
 }

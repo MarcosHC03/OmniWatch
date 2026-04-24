@@ -3,10 +3,17 @@ package com.watchlist.app.data.repository
 import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.local.dao.NewsDao
 import com.watchlist.app.data.local.dao.DiscoveryCacheDao
+import com.watchlist.app.data.local.dao.PrintMediaDao
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
 import com.watchlist.app.data.local.entities.DiscoveryCacheEntity
+import com.watchlist.app.data.local.entities.PrintType
+import com.watchlist.app.data.local.entities.PrintMediaEntity
+import com.watchlist.app.data.local.entities.ReadStatus
+import com.watchlist.app.data.local.entities.NewsArticleEntity
+import com.watchlist.app.data.local.entities.PrintVolumeEntity
+import com.watchlist.app.data.local.entities.PrintFranchiseWithVolumes
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.NewsArticle
 import com.watchlist.app.data.remote.TmdbApiService
@@ -19,7 +26,7 @@ import com.watchlist.app.data.remote.MalApiService
 import com.watchlist.app.data.remote.MalTokenResponse
 import com.watchlist.app.data.remote.RssApiService
 import com.watchlist.app.data.remote.RssParser
-import com.watchlist.app.data.local.entities.NewsArticleEntity
+import com.watchlist.app.data.remote.MalDataApiService
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,20 +34,22 @@ import javax.inject.Singleton
 @Singleton
 class MediaRepository @Inject constructor(
     private val dao: MediaItemDao,
+    private val printDao: PrintMediaDao,
     private val discoveryCacheDao: DiscoveryCacheDao,
     private val tmdbApi: TmdbApiService,
     private val newsApi: NewsApiService,
     private val jikanApiService: JikanApiService,
     private val malApi: MalApiService,
-    private val malDataApi: com.watchlist.app.data.remote.MalDataApiService,
+    private val malDataApi: MalDataApiService,
     private val newsDao: NewsDao,
     private val rssApi: RssApiService,
 ) {
-    // ---- Local DB ----
 
+    // ---- Local DB (Audiovisual) ----
     fun getItemsByType(type: MediaType): Flow<List<MediaItemEntity>> =
         dao.getItemsByType(type)
 
+    // ---- Local DB (Impresos) ----
     fun getAllItems(): Flow<List<MediaItemEntity>> =
         dao.getAllItems()
 
@@ -381,4 +390,55 @@ class MediaRepository @Inject constructor(
         // Y guardamos los estrenos fresquitos
         discoveryCacheDao.insertAll(items)
     }
+
+    // ---- Local DB (Impresos) ----
+    fun getPrintItemsByType(type: PrintType): Flow<List<PrintMediaEntity>> =
+        printDao.getFranchisesByType(type) // <-- Antes era getItemsByType
+
+    suspend fun getPrintItemById(id: Long): PrintMediaEntity? = 
+        printDao.getFranchiseById(id) // <-- Antes era getById
+
+    suspend fun insertPrintItem(item: PrintMediaEntity): Long = 
+        printDao.insertFranchise(item) // <-- Antes era insertItem
+
+    suspend fun updatePrintItem(item: PrintMediaEntity) = 
+        printDao.updateFranchise(item.copy(updatedAt = System.currentTimeMillis())) // <-- Antes era updateItem
+
+    suspend fun deletePrintItem(item: PrintMediaEntity) {
+        printDao.deleteFranchise(item) // <-- Antes era deleteById(item.id)
+    }
+
+    // Búsqueda de Manga en Jikan (MyAnimeList)
+    suspend fun searchJikanManga(query: String): List<PrintMediaEntity> {
+        return try {
+            val response = jikanApiService.searchManga(query)
+            response.data.map { manga ->
+                PrintMediaEntity(
+                    title = manga.title ?: "Sin título",
+                    originalTitle = manga.titleJapanese ?: "",
+                    posterPath = manga.images?.jpg?.imageUrl ?: "",
+                    synopsis = manga.synopsis ?: "",
+                    author = manga.authors?.firstOrNull()?.name ?: "",
+                    printType = PrintType.MANGA,
+                    status = ReadStatus.PLANNED,
+                    totalVolumes = manga.volumes ?: 0,
+                    totalChapters = manga.chapters ?: 0,
+                    externalId = manga.malId
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    fun getFranchiseWithVolumes(id: Long): Flow<PrintFranchiseWithVolumes?> =
+        printDao.getFranchiseWithVolumes(id)
+
+    // ---- Operaciones de Tomos Individuales ----
+    suspend fun insertPrintVolume(volume: PrintVolumeEntity): Long =
+        printDao.insertVolume(volume)
+
+    suspend fun updatePrintVolume(volume: PrintVolumeEntity) =
+        printDao.updateVolume(volume)
+
+    suspend fun deletePrintVolume(volume: PrintVolumeEntity) =
+        printDao.deleteVolume(volume)
 }
