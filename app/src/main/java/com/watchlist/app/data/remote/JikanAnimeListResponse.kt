@@ -72,3 +72,16 @@ data class JikanAuthor(
     @SerializedName("mal_id") val malId: Int,
     val name: String?
 )
+
+// El molde principal que envuelve la respuesta
+data class JikanMangaResponse(
+    val data: JikanMangaDetails
+)
+
+// Los detalles puntuales del manga
+data class JikanMangaDetails(
+    @SerializedName("mal_id") val malId: Int,
+    val title: String?,
+    val synopsis: String?,
+    val authors: List<JikanAuthor>?
+)

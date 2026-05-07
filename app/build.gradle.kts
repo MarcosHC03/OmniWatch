@@ -31,6 +31,10 @@ android {
         buildConfigField("String", "NEWS_API_KEY", "\"${localProperties.getProperty("NEWS_API_KEY")}\"")
         // MAL API Key - remplazá con tu key de https://myanimelist.net/apiconfig
         buildConfigField("String", "MAL_CLIENT_ID", "\"${localProperties.getProperty("MAL_CLIENT_ID")}\"")
+        // ComicVine API Key - remplazá con tu key de https://comicvine.gamespot.com/api/
+        buildConfigField("String", "CV_API_KEY", "\"${localProperties.getProperty("CV_API_KEY")}\"")
+        // ComicVine Email - remplazá con tu correo real, ComicVine lo exige para identificar tu app
+        buildConfigField("String", "CV_EMAIL", "\"${localProperties.getProperty("CV_EMAIL")}\"")
     }
 
     buildTypes {

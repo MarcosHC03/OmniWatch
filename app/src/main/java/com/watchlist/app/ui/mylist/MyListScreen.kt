@@ -44,6 +44,7 @@ import com.watchlist.app.navigation.Screen
 import com.watchlist.app.ui.StarRatingBar
 import com.watchlist.app.ui.WatchListBottomBar
 import com.watchlist.app.ui.WatchStatusBadge
+import com.watchlist.app.ui.ReadStatusBadge
 import com.watchlist.app.viewmodel.MyListViewModel
 import com.watchlist.app.viewmodel.ListMode
 
@@ -68,6 +69,8 @@ fun MyListScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importBackup(it) } }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     // ---- Snackbars ----
     LaunchedEffect(state.backupSuccessMessage) {
         state.backupSuccessMessage?.let {
@@ -91,6 +94,13 @@ fun MyListScreen(
     LaunchedEffect(state.importErrorMessage) {
         state.importErrorMessage?.let {
             snackbarHostState.showSnackbar(it)
+            viewModel.clearImportMessages()
+        }
+    }
+
+    LaunchedEffect(state.importErrorMessage) {
+        state.importErrorMessage?.let { msg ->
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
             viewModel.clearImportMessages()
         }
     }
@@ -305,13 +315,10 @@ fun MyListScreen(
                     items(state.printItems, key = { it.id }) { item ->
                         PrintMediaItemCard(
                             item = item,
-                            modifier = Modifier.clickable {
-                                // ¡ACÁ SE DISPARA LA NAVEGACIÓN!
-                                navController.navigate(Screen.PrintDetails.createRoute(item.id))
-                            },
+                            onClick = { navController.navigate(Screen.PrintDetails.createRoute(item.id)) },
                             onEdit = { navController.navigate(Screen.AddPrintMedia.createRoute(item.id)) },
                             onDelete = { viewModel.deletePrintItem(item) },
-                            onPlusOnePage = { /* Ahora esto se manejará adentro de detalles */ },
+                            onPlusOneClick = { viewModel.plusOnePrintChapter(it) },
                             onReadClick = { /* Opcional: también podrías navegar desde acá */ }
                         )
                     }
@@ -545,10 +552,11 @@ fun MediaItemCard(
 @Composable
 fun PrintMediaItemCard(
     item: PrintMediaEntity,
+    onClick: (PrintMediaEntity) -> Unit,
     modifier: Modifier = Modifier,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onPlusOnePage: (PrintMediaEntity) -> Unit,
+    onPlusOneClick: (PrintMediaEntity) -> Unit,
     onReadClick: () -> Unit // Para la v2.5
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -572,7 +580,7 @@ fun PrintMediaItemCard(
     }
 
     Card(
-        modifier  = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier  = Modifier.fillMaxWidth().clickable { onClick(item) },
         shape     = RoundedCornerShape(14.dp),
         colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -587,89 +595,81 @@ fun PrintMediaItemCard(
                     model              = item.posterPath,
                     contentDescription = item.title,
                     modifier           = Modifier
-                        .width(80.dp)
-                        .height(120.dp)
+                        .width(70.dp)
+                        .height(105.dp)
                         .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)),
                     contentScale = ContentScale.Crop
                 )
             } else {
                 Box(
                     Modifier
-                        .width(80.dp)
-                        .height(120.dp)
+                        .width(70.dp)
+                        .height(105.dp)
                         .background(
                             MaterialTheme.colorScheme.surfaceVariant,
                             RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
                         ),
                     contentAlignment = Alignment.Center
-                ) { Text("📖", fontSize = 28.sp) }
+                ) { Text("📖", fontSize = 24.sp) }
             }
 
             // ── Contenido central ────────────────────────────────────────────
             Column(
                 Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Título
                 Text(
                     text       = item.title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize   = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 14.sp,
                     maxLines   = 2,
                     overflow   = TextOverflow.Ellipsis
                 )
 
                 // Estado
-                Text(
-                    text = when (item.status) {
-                        ReadStatus.READING -> "Leyendo"
-                        ReadStatus.COMPLETED -> "Leído"
-                        ReadStatus.PLANNED -> "Por leer"
-                        ReadStatus.ON_HOLD -> "Pausado"
-                        else -> "Desconocido"
-                    },
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                ReadStatusBadge(status = item.status)
 
                 // Rating
                 if (item.rating > 0f) {
-                    StarRatingBar(rating = item.rating, starSize = 12)
+                    StarRatingBar(rating = item.rating, starSize = 14)
                 }
 
-                // Tomo - Capítulo - Página
-                val progressText = "Vol 0 • Cap 0 • Pág 0"
-                                    /*buildString {
-                    if (item.currentVolume > 0) append("Vol ${item.currentVolume} • ")
-                    if (item.currentChapter > 0) append("Cap ${item.currentChapter} • ")
-                    append("Pág ${item.currentPage}")
-                }*/
+                // Tomo y Capítulo Global (Sin páginas, eso va en Detalles)
+                val volTotal = if (item.totalVolumes > 0) item.totalVolumes.toString() else "?"
+                val capTotal = if (item.totalChapters > 0) item.totalChapters.toString() else "?"
+                
+                val progressText = "Vol ${item.currentVolume} / $volTotal • Cap ${item.currentChapter} / $capTotal"
+                
                 Text(
                     text     = progressText,
-                    fontSize = 12.sp,
-                    color    = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 11.sp,
+                    color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
-
-                // Barra de Progreso (Calculada en base a páginas si existen, sino genérica)
-                val progress = 0f
-                                /*if (item.totalPagesInCurrentFile > 0) {
-                    (item.currentPage.toFloat() / item.totalPagesInCurrentFile.toFloat()).coerceIn(0f, 1f)
-                } else {
-                    0f // Si no hay total de páginas, la barra queda vacía por ahora
-                }*/
                 
+                // ── BARRA DE PROGRESO UNIFICADA E INTELIGENTE ──
+                val progress = when {
+                    // Prioridad 1: Capítulos (Es lo que suma el botón +1 y es más preciso)
+                    item.totalChapters > 0 -> (item.currentChapter.toFloat() / item.totalChapters.toFloat()).coerceIn(0f, 1f)
+                    
+                    // Prioridad 2: Tomos (Fallback si no sabemos el total de capítulos)
+                    item.totalVolumes > 0 -> (item.currentVolume.toFloat() / item.totalVolumes.toFloat()).coerceIn(0f, 1f)
+                    
+                    // Si todo es 0 (ej: manga en publicación sin tope), la barra queda vacía
+                    else -> 0f 
+                }
+
+                // Ahora le pasamos este 'progress' inteligente al indicador visual
                 LinearProgressIndicator(
-                    progress    = { progress },
-                    modifier    = Modifier
+                    progress = { progress },
+                    modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp)),
-                    color       = MaterialTheme.colorScheme.primary,
-                    trackColor  = MaterialTheme.colorScheme.surfaceVariant
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
 
                 // Autor
@@ -677,9 +677,7 @@ fun PrintMediaItemCard(
                     Text(
                         text     = item.author,
                         fontSize = 11.sp,
-                        color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                     )
                 }
             }
@@ -689,37 +687,35 @@ fun PrintMediaItemCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(end = 4.dp)
             ) {
-                // Botón +1 Página inteligente
-                /*if (item.status == ReadStatus.READING) {
+                // Botón de +1 Capítulo Rápido
+                if (item.status == ReadStatus.READING) {
                     IconButton(
                         onClick = {
-                            // Si no hay total definido (0) lo dejamos sumar infinito.
-                            // Si hay total, validamos que no se pase.
-                            if (item.totalPagesInCurrentFile == 0 || item.currentPage < item.totalPagesInCurrentFile) {
-                                onPlusOnePage(item)
+                            if (item.currentChapter < item.totalChapters) {
+                                onPlusOneClick(item)
                             } else {
                                 android.widget.Toast.makeText(
                                     ctx,
-                                    "Llegaste a la última página. Editá la tarjeta para pasar al siguiente capítulo/tomo.",
+                                    "¡Tope alcanzado! Editá la franquicia para seguir leyendo.",
                                     android.widget.Toast.LENGTH_LONG
                                 ).show()
                             }
-                        },
-                        modifier = Modifier.size(36.dp)
+                        }
                     ) {
-                        val tint = if (item.totalPagesInCurrentFile > 0 && item.currentPage >= item.totalPagesInCurrentFile)
+                        // Ícono diferente si ya completó todos los eps
+                        val tint = if (item.currentChapter >= item.totalChapters && item.totalChapters > 0)
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                         else
                             MaterialTheme.colorScheme.primary
 
                         Icon(
                             imageVector        = Icons.Filled.AddCircle,
-                            contentDescription = "+1 Página",
+                            contentDescription = "+1 capítulo",
                             tint               = tint,
                             modifier           = Modifier.size(28.dp)
                         )
                     }
-                }*/
+                }
 
                 // Editar
                 IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {

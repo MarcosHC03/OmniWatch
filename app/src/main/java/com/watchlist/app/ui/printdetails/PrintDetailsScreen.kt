@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.watchlist.app.viewmodel.PrintDetailsViewModel
+import com.watchlist.app.data.local.entities.PrintVolumeEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,9 +40,16 @@ fun PrintDetailsScreen(
     val data by viewModel.franchiseData.collectAsState()
     
     // Estados para el Modal de Agregar Tomo
-    var showAddVolumeDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
-    var newVolNumber by remember { androidx.compose.runtime.mutableStateOf("") }
-    var newVolPages by remember { androidx.compose.runtime.mutableStateOf("") }
+    var showAddVolumeDialog by remember { mutableStateOf(false) }
+    var newVolNumber by remember { mutableStateOf("") }
+    var newVolPages by remember { mutableStateOf("") }
+    var newVolCurrentPage by remember { mutableStateOf("") }
+
+    // Estados para el Modal de Editar Tomo
+    var showEditVolumeDialog by remember { mutableStateOf(false) }
+    var volumeToEdit by remember { mutableStateOf<PrintVolumeEntity?>(null) }
+    var editCurrentPage by remember { mutableStateOf("") }
+    var editTotalPages by remember { mutableStateOf("") }
 
     // ── MODAL PARA AGREGAR TOMO ──
     if (showAddVolumeDialog) {
@@ -54,6 +62,15 @@ fun PrintDetailsScreen(
                         value = newVolNumber,
                         onValueChange = { newVolNumber = it },
                         label = { Text("Número de Tomo (Ej: 1)") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = newVolCurrentPage,
+                        onValueChange = { newVolCurrentPage = it },
+                        label = { Text("Página Actual") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                         ),
@@ -73,10 +90,10 @@ fun PrintDetailsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.addVolume(newVolNumber, newVolPages)
-                        // Limpiamos los campos y cerramos el modal
-                        newVolNumber = ""
-                        newVolPages = ""
+                        viewModel.addVolume(newVolNumber, newVolCurrentPage, newVolPages)
+                        newVolNumber = "";
+                        newVolCurrentPage = "";
+                        newVolPages = "";
                         showAddVolumeDialog = false
                     }
                 ) {
@@ -87,6 +104,46 @@ fun PrintDetailsScreen(
                 TextButton(onClick = { showAddVolumeDialog = false }) {
                     Text("Cancelar")
                 }
+            }
+        )
+    }
+
+    // ── MODAL PARA EDITAR TOMO ──
+    if (showEditVolumeDialog && volumeToEdit != null) {
+        AlertDialog(
+            onDismissRequest = { showEditVolumeDialog = false },
+            title = { Text("Editar Tomo ${volumeToEdit!!.volumeNumber}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editCurrentPage,
+                        onValueChange = { editCurrentPage = it },
+                        label = { Text("Página Actual") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = editTotalPages,
+                        onValueChange = { editTotalPages = it },
+                        label = { Text("Páginas Totales") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.updateVolumePages(volumeToEdit!!, editCurrentPage, editTotalPages)
+                    showEditVolumeDialog = false
+                    volumeToEdit = null
+                }) { Text("Guardar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditVolumeDialog = false }) { Text("Cancelar") }
             }
         )
     }
@@ -190,8 +247,12 @@ fun PrintDetailsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Armamos los textos con un "?" si el total es 0
+                val volTotal = if (franchise.totalVolumes > 0) franchise.totalVolumes.toString() else "?"
+                val capTotal = if (franchise.totalChapters > 0) franchise.totalChapters.toString() else "?"
+                
                 Text(
-                    text = "Tomos: ${franchise.totalVolumes} • Capítulos: ${franchise.totalChapters}",
+                    text = "Tomos: ${franchise.currentVolume} / $volTotal • Capítulos: ${franchise.currentChapter} / $capTotal",
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -230,10 +291,25 @@ fun PrintDetailsScreen(
                                 
                                 // Botones de Acción (Editar y Borrar)
                                 Row {
-                                    IconButton(onClick = { /* Pronto: Abrir modal en modo edición */ }, modifier = Modifier.size(36.dp)) {
+                                    // Botón Editar
+                                    IconButton(
+                                        onClick = { 
+                                            volumeToEdit = volume
+                                            // Cargamos los datos actuales para que no arranque vacío
+                                            editCurrentPage = if (volume.currentPage > 0) volume.currentPage.toString() else ""
+                                            editTotalPages = if (volume.totalPages > 0) volume.totalPages.toString() else ""
+                                            showEditVolumeDialog = true
+                                        }, 
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
                                         Icon(Icons.Filled.Edit, contentDescription = "Editar Tomo", modifier = Modifier.size(18.dp))
                                     }
-                                    IconButton(onClick = { /* Pronto: viewModel.deleteVolume(volume) */ }, modifier = Modifier.size(36.dp)) {
+                                    
+                                    // Botón Borrar
+                                    IconButton(
+                                        onClick = { viewModel.deleteVolume(volume) }, 
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
                                         Icon(Icons.Filled.Delete, contentDescription = "Borrar Tomo", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                                     }
                                 }

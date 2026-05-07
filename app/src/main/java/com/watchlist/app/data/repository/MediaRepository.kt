@@ -27,6 +27,10 @@ import com.watchlist.app.data.remote.MalTokenResponse
 import com.watchlist.app.data.remote.RssApiService
 import com.watchlist.app.data.remote.RssParser
 import com.watchlist.app.data.remote.MalDataApiService
+import com.watchlist.app.data.remote.ComicApiService
+import com.watchlist.app.data.backup.AppBackup
+import com.watchlist.app.data.backup.PrintBackupItem
+import com.watchlist.app.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,6 +47,7 @@ class MediaRepository @Inject constructor(
     private val malDataApi: MalDataApiService,
     private val newsDao: NewsDao,
     private val rssApi: RssApiService,
+    private val comicApi: ComicApiService
 ) {
 
     // ---- Local DB (Audiovisual) ----
@@ -56,6 +61,65 @@ class MediaRepository @Inject constructor(
     /** Una sola lectura sin Flow — usado para exportar backup */
     suspend fun getAllItemsOnce(): List<MediaItemEntity> =
         dao.getAllItemsOnce()
+
+    // ---- Backup v2: Construcción y Restauración ----
+
+    /**
+    * Construye el objeto [AppBackup] completo leyendo la base de datos una sola vez.
+    * Para cada franquicia impresa, hace una segunda consulta para obtener sus tomos.
+    * Llamada desde el ViewModel durante la exportación.
+    */
+    suspend fun buildBackup(): AppBackup {
+        val audiovisuales = dao.getAllItemsOnce()
+
+        val franchises = printDao.getAllFranchisesOnce()
+        val impresos = franchises.map { franchise ->
+            val tomos = printDao.getVolumesByFranchiseId(franchise.id)
+            PrintBackupItem(franquicia = franchise, tomos = tomos)
+        }
+
+        return AppBackup(
+            version = 2,
+            audiovisuales = audiovisuales,
+            impresos = impresos
+        )
+    }
+
+    /**
+    * Restaura un [AppBackup] v2 en la base de datos.
+    *
+    * Estrategia para audiovisuales: REPLACE directo por ID (comportamiento idéntico a v1).
+    *
+    * Estrategia para impresos (la regla crítica):
+    * 1. Se inserta la franquicia con ID = 0 para forzar que Room genere un ID limpio
+    *    y evitar colisiones con franquicias ya existentes.
+    * 2. Se recupera el [newFranchiseId] que Room devolvió.
+    * 3. Se insertan los tomos reasignándoles ese nuevo ID como clave foránea.
+    */
+    suspend fun restoreBackup(backup: AppBackup) {
+        // — Audiovisuales —
+        if (backup.audiovisuales.isNotEmpty()) {
+            dao.insertAll(backup.audiovisuales)
+        }
+
+        // — Impresos —
+        for (backupItem in backup.impresos) {
+            // Forzamos ID = 0 para que Room autogenere uno nuevo y no haya conflictos
+            val franchiseToInsert = backupItem.franquicia.copy(id = 0L)
+            val newFranchiseId = printDao.insertFranchise(franchiseToInsert)
+
+            if (backupItem.tomos.isNotEmpty()) {
+                // Reasignamos la clave foránea al ID recién generado y limpiamos el ID del tomo
+                val volumesWithNewId = backupItem.tomos.map { tomo ->
+                    tomo.copy(
+                        volumeId = 0L,                       // ID limpio: que Room asigne uno nuevo
+                        printMediaId = newFranchiseId  // ← El vínculo correcto
+                    )
+                }
+                printDao.insertAllVolumes(volumesWithNewId)
+            }
+        }
+    }
 
     fun searchItems(query: String): Flow<List<MediaItemEntity>> =
         dao.searchItems(query)
@@ -251,7 +315,7 @@ class MediaRepository @Inject constructor(
             val databaseId = existingItem?.id ?: 0L
 
             MediaItemEntity(
-                id = databaseId, // <-- Acá está la solución al problema
+                id = databaseId,
                 tmdbId = item.node.id,
                 title = item.node.title,
                 posterPath = item.node.mainPicture?.large ?: item.node.mainPicture?.medium ?: "",
@@ -259,7 +323,7 @@ class MediaRepository @Inject constructor(
                 watchStatus = when (item.list_status.status) {
                     "watching"       -> WatchStatus.WATCHING
                     "completed"      -> WatchStatus.COMPLETED
-                    else             -> WatchStatus.PLANNED  // plan_to_watch, on_hold, dropped
+                    else             -> WatchStatus.PLANNED
                 },
                 rating = (item.list_status.score / 2.0f),
                 totalEpisodes = item.node.numEpisodes,
@@ -275,6 +339,87 @@ class MediaRepository @Inject constructor(
         dao.insertAll(entities)
     }
 
+    // Descarga la lista oficial de MANGAS y la guarda en la base de datos de Impresos
+    suspend fun syncOfficialMalMangaList(accessToken: String) {
+        val response = malDataApi.getMyMangaList("Bearer $accessToken")
+        val localMangas = printDao.getAllFranchisesOnce()
+
+        val entities = response.data.map { item ->
+            // MAGIA ANTI-DUPLICADOS (Mejorada): Buscamos por ID de MAL, o si lo creaste a mano, buscamos por título exacto.
+            val existingItem = localMangas.find { 
+                it.externalId == item.node.id || it.title.equals(item.node.title, ignoreCase = true) 
+            }
+            val databaseId = existingItem?.id ?: 0L
+
+            // Mejoramos el autor: probamos varias combinaciones por si MAL se pone mañoso
+            val authorName = item.node.authors?.firstOrNull()?.node?.let { author ->
+                val first = author.firstName?.trim() ?: ""
+                val last = author.lastName?.trim() ?: ""
+                
+                when {
+                    first.isNotBlank() && last.isNotBlank() -> "$last, $first"
+                    first.isNotBlank() -> first
+                    last.isNotBlank() -> last
+                    else -> "Autor Desconocido"
+                }
+            } ?: existingItem?.author ?: ""
+
+            PrintMediaEntity(
+                id = databaseId,
+                externalId = item.node.id, 
+                title = item.node.title,
+                originalTitle = existingItem?.originalTitle ?: "",
+                posterPath = item.node.mainPicture?.large ?: item.node.mainPicture?.medium ?: "",
+                printType = PrintType.MANGA,
+                status = when (item.list_status.status) {
+                    "reading"   -> ReadStatus.READING
+                    "completed" -> ReadStatus.COMPLETED
+                    "on_hold"   -> ReadStatus.ON_HOLD
+                    else        -> ReadStatus.PLANNED 
+                },
+                rating = (item.list_status.score / 2.0f),
+                totalVolumes = item.node.numVolumes,
+                totalChapters = item.node.numChapters,
+                currentVolume = item.list_status.numVolumesRead,
+                currentChapter = item.list_status.numChaptersRead,
+                author = authorName,
+                synopsis = item.node.synopsis ?: existingItem?.synopsis ?: ""
+            )
+        }
+
+        // Guardamos todo y obtenemos la lista de los IDs que Room les asignó
+        val insertedIds = printDao.insertAllFranchises(entities)
+
+       // EL BUCLE MÁGICO PARA LA IMPORTACIÓN (Versión Blindada)
+        entities.forEachIndexed { index, entity ->
+            // Usamos el ID real: si era nuevo, usamos el insertado. Si ya existía, usamos el suyo.
+            val realFranchiseId = if (entity.id == 0L) insertedIds[index] else entity.id
+
+            if (entity.currentVolume > 0) {
+                // Reutilizamos la función plana del backup para obtener la foto actual
+                val tomosExistentes = printDao.getVolumesByFranchiseId(realFranchiseId)
+                val cantidadExistente = tomosExistentes.size
+
+                // Si en MAL dice que leíste más tomos de los que hay en el celular...
+                if (entity.currentVolume > cantidadExistente) {
+                    val tomosNuevos = mutableListOf<PrintVolumeEntity>()
+                    // Generamos solo los tomos que faltan
+                    for (i in (cantidadExistente + 1)..entity.currentVolume) {
+                        tomosNuevos.add(
+                            PrintVolumeEntity(
+                                printMediaId = realFranchiseId,
+                                volumeNumber = i,
+                                totalPages = 0,
+                                currentPage = 0
+                            )
+                        )
+                    }
+                    printDao.insertAllVolumes(tomosNuevos)
+                }
+            }
+        }
+    }
+
     // 1. El tubo directo a la base de datos (Esto carga al instante)
     val localNewsFlow = newsDao.getAllNews()
 
@@ -282,7 +427,7 @@ class MediaRepository @Inject constructor(
         try {
             // 1. Armamos nuestra lista de diarios a la carta
             val feeds = listOf(
-                Pair("https://somoskudasai.com/feed/", "SomosKudasai"), // Anime
+                Pair("https://somoskudasai.com/feed/", "SomosKudasai"),
                 Pair("https://www.sensacine.com/rss/noticias.xml", "SensaCine"),
                 Pair("https://www.cinepremiere.com.mx/feed/", "Cine PREMIERE")
             )
@@ -398,8 +543,17 @@ class MediaRepository @Inject constructor(
     suspend fun getPrintItemById(id: Long): PrintMediaEntity? = 
         printDao.getFranchiseById(id) // <-- Antes era getById
 
-    suspend fun insertPrintItem(item: PrintMediaEntity): Long = 
-        printDao.insertFranchise(item) // <-- Antes era insertItem
+    suspend fun insertPrintItem(item: PrintMediaEntity): Long {
+        // Si es un ítem nuevo (ID 0), chequeamos si ya existe uno con ese título
+        if (item.id == 0L) {
+            val existing = printDao.getFranchiseByTitle(item.title)
+            if (existing != null) {
+                // Si existe, lo pisamos manteniendo el ID original para que no se duplique
+                return printDao.insertFranchise(item.copy(id = existing.id))
+            }
+        }
+        return printDao.insertFranchise(item)
+    }
 
     suspend fun updatePrintItem(item: PrintMediaEntity) = 
         printDao.updateFranchise(item.copy(updatedAt = System.currentTimeMillis())) // <-- Antes era updateItem
@@ -441,4 +595,65 @@ class MediaRepository @Inject constructor(
 
     suspend fun deletePrintVolume(volume: PrintVolumeEntity) =
         printDao.deleteVolume(volume)
+
+
+    // RESOLUCIÓN DE PROBLEMA POST-IMPORTACIÓN: Si el manga importado de MAL no tenía autor o sinopsis, vamos a buscar esos datos faltantes usando la API de Jikan y actualizar la franquicia en la base de datos.
+    suspend fun fetchMissingMangaDetails(franchiseId: Long, malId: Int) {
+        try {
+            // Buscamos el manga en Jikan usando su ID de MyAnimeList
+            val response = jikanApiService.getMangaById(malId)
+            
+            // Armamos el nombre del autor (Jikan sí lo manda bien)
+            val authorName = response.data.authors?.firstOrNull()?.name ?: "Autor Desconocido"
+            
+            // Agarramos la franquicia actual de nuestra base de datos
+            val currentFranchise = printDao.getFranchiseById(franchiseId)
+            
+            // Si la encontramos, la actualizamos y la volvemos a guardar
+            if (currentFranchise != null) {
+                printDao.updateFranchise(currentFranchise.copy(
+                    author = authorName,
+                    // Si querés, podés aprovechar y pisar la sinopsis acá si MAL te la trajo cortada
+                    // synopsis = response.data.synopsis ?: currentFranchise.synopsis 
+                ))
+            }
+        } catch (e: Exception) {
+            // Si falla (ej: sin internet), no pasa nada, intentará de nuevo la próxima vez que entres a los detalles
+            e.printStackTrace()
+        }
+    }
+
+    // Agregá tu servicio en el constructor si usás inyección de dependencias (Hilt)
+    // private val comicApi: ComicApiService
+
+    suspend fun searchComicVine(query: String): List<PrintMediaEntity> {
+        return try {
+            val apiKey = BuildConfig.CV_API_KEY
+            
+            val response = comicApi.searchComics(query = query, apiKey = apiKey)
+            
+            response.results.map { volume ->
+                // ComicVine suele devolver la descripción en HTML feo (ej: <p>Spider-Man...</p>)
+                // Limpiamos un poco el texto si no es nulo
+                val cleanSynopsis = volume.description?.replace(Regex("<.*?>"), "")?.trim() ?: "Sin descripción disponible."
+                val authorOrPublisher = volume.publisher?.name ?: "Editorial Desconocida"
+
+                PrintMediaEntity(
+                    title = volume.name ?: "Sin título",
+                    originalTitle = "", // En cómics occidentales suele ser el mismo
+                    posterPath = volume.image?.medium_url ?: volume.image?.original_url ?: "",
+                    synopsis = cleanSynopsis,
+                    author = authorOrPublisher, // Usamos la editorial (DC, Marvel, Image) como autor
+                    printType = PrintType.COMIC, // Todo lo que viene de acá lo tratamos como cómic
+                    status = ReadStatus.PLANNED,
+                    totalVolumes = 1, // Para ComicVine, la serie entera es un volumen
+                    totalChapters = volume.count_of_issues ?: 0, // La cantidad de números (#1, #2, #3...)
+                    externalId = volume.id // Guardamos el ID por si en el futuro queremos hacer lazy loading
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
 }

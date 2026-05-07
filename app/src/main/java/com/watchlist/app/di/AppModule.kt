@@ -11,6 +11,7 @@ import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.MalApiService
 import com.watchlist.app.data.remote.RssApiService
+import com.watchlist.app.data.remote.ComicApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -107,6 +108,25 @@ object AppModule {
             .build()
     }
 
+    @Provides
+    @Singleton
+    @Named("comic")
+    fun provideComicOkHttpClient(): OkHttpClient {
+        val userAgentInterceptor = Interceptor { chain ->
+            val request = chain.request().newBuilder()
+                // ComicVine exige un User-Agent personalizado con tu correo real para identificar tu app.
+                .header("User-Agent", "OmniWatchApp/2.0 (${BuildConfig.CV_EMAIL})")
+                .build()
+            chain.proceed(request)
+        }
+        return OkHttpClient.Builder()
+            .addInterceptor(userAgentInterceptor)
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BASIC
+            })
+            .build()
+    }
+
     // ---- Retrofit ----
 
     @Provides
@@ -164,4 +184,14 @@ object AppModule {
             .addConverterFactory(ScalarsConverterFactory.create()) // <-- Magia para leer XML
             .build()
             .create(RssApiService::class.java)
+    
+    @Provides
+    @Singleton
+    fun provideComicApiService(@Named("comic") client: OkHttpClient): ComicApiService =
+        Retrofit.Builder()
+            .baseUrl("https://comicvine.gamespot.com/api/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ComicApiService::class.java)
 }

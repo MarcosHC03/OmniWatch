@@ -22,6 +22,8 @@ data class PrintMediaEntity(
     // Datos generales (lo que nos va a decir MAL)
     val totalVolumes: Int = 0,
     val totalChapters: Int = 0,
+    val currentVolume: Int = 0,
+    val currentChapter: Int = 0,
     
     val externalId: Int = 0, // ID de MAL
     val addedAt: Long = System.currentTimeMillis(),

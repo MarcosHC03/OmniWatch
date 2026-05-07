@@ -28,4 +28,9 @@ interface JikanApiService {
     suspend fun searchManga(
         @Query("q") query: String
     ): JikanMangaSearchResponse
+
+    @GET("manga/{id}")
+    suspend fun getMangaById(
+        @Path("id") id: Int
+    ): JikanMangaResponse
 }

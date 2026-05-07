@@ -20,7 +20,7 @@ import com.watchlist.app.data.local.entities.PrintVolumeEntity
         PrintMediaEntity::class,
         PrintVolumeEntity::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class WatchListDatabase : RoomDatabase() {

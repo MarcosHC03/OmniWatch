@@ -41,4 +41,29 @@ interface PrintMediaDao {
     @Transaction 
     @Query("SELECT * FROM print_media_items WHERE id = :franchiseId")
     fun getFranchiseWithVolumes(franchiseId: Long): Flow<PrintFranchiseWithVolumes?>
+
+    @Query("SELECT * FROM print_media_items")
+    suspend fun getAllFranchisesOnce(): List<PrintMediaEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllFranchises(franchises: List<PrintMediaEntity>): List<Long>
+
+    @Query("SELECT * FROM print_media_items WHERE title = :title LIMIT 1")
+    suspend fun getFranchiseByTitle(title: String): PrintMediaEntity?
+
+    // ---- 4. MÉTODOS PARA BACKUP (NUEVOS) ----
+
+    /**
+    * Lectura de una sola vez (sin Flow) de todos los tomos de una franquicia.
+    * Usada durante la exportación para construir cada [PrintBackupItem].
+    */
+    @Query("SELECT * FROM print_volumes WHERE printMediaId = :franchiseId ORDER BY volumeNumber ASC")
+    suspend fun getVolumesByFranchiseId(franchiseId: Long): List<PrintVolumeEntity>
+
+    /**
+    * Inserción en lote de tomos — usada durante la importación del backup.
+    * Se llama DESPUÉS de insertar la franquicia y asignar los IDs correctos.
+    */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllVolumes(volumes: List<PrintVolumeEntity>)
 }

@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.GsonBuilder
+//import com.google.gson.JsonParser
+import com.google.gson.JsonElement
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import com.watchlist.app.data.local.entities.MediaItemEntity
@@ -14,6 +16,7 @@ import com.watchlist.app.data.local.entities.PrintMediaEntity
 import com.watchlist.app.data.local.entities.PrintType
 import com.watchlist.app.data.local.entities.ReadStatus
 import com.watchlist.app.data.repository.MediaRepository
+import com.watchlist.app.data.backup.AppBackup
 import com.watchlist.app.BuildConfig
 import com.watchlist.app.utils.AuthUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -106,7 +109,14 @@ class MyListViewModel @Inject constructor(
                 // --- NUEVA LÓGICA PARA CÓMICS Y MANGAS ---
                 repository.getPrintItemsByType(s.printTab).map { items ->
                     
-                    // Mapeamos el estado audiovisual al estado de lectura para poder filtrar
+                    // 1. Filtramos por texto (Si el usuario escribió algo)
+                    val searchedItems = if (s.query.isBlank()) {
+                        items
+                    } else {
+                        items.filter { it.title.contains(s.query, ignoreCase = true) }
+                    }
+
+                    // 2. Filtramos por estado (Leyendo, Leído, etc.)
                     val mappedStatus = when (s.status) {
                         WatchStatus.WATCHING -> ReadStatus.READING
                         WatchStatus.COMPLETED -> ReadStatus.COMPLETED
@@ -115,9 +125,9 @@ class MyListViewModel @Inject constructor(
                     }
                     
                     val filteredItems = if (mappedStatus != null) {
-                        items.filter { it.status == mappedStatus }
+                        searchedItems.filter { it.status == mappedStatus }
                     } else {
-                        items
+                        searchedItems
                     }
 
                     MyListUiState(
@@ -201,13 +211,14 @@ class MyListViewModel @Inject constructor(
 
                 if (response != null) {
                     AuthUtils.saveAccessToken(context, response.accessToken)
-                    
+                        
                     // 2. ¡NUEVO! Con el Pase VIP en mano, descargamos los animes
                     repository.syncOfficialMalList(response.accessToken)
+                    repository.syncOfficialMalMangaList(response.accessToken)
                     
                     _state.update { it.copy(
                         isImporting = false, 
-                        tab = MediaType.ANIME, // Cambiamos a la pestaña Anime automáticamente
+                        //tab = MediaType.ANIME, // Cambiamos a la pestaña Anime automáticamente
                         importSuccess = "¡Lista importada con éxito desde MyAnimeList!"
                     ) }
                 } else {
@@ -219,30 +230,38 @@ class MyListViewModel @Inject constructor(
         }
     }
 
-    // ---- Backup: Exportar a JSON ----
+    // ---- Backup: Exportar a JSON (v2) ----
 
     fun exportBackup(uri: Uri) {
         viewModelScope.launch {
             _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
             try {
-                val allItems = repository.getAllItemsOnce()
-                if (allItems.isEmpty()) {
+                // buildBackup() reemplaza a getAllItemsOnce(): ahora incluye impresos con sus tomos
+                val backup = repository.buildBackup()
+
+                if (backup.audiovisuales.isEmpty() && backup.impresos.isEmpty()) {
                     _state.update { it.copy(
                         isBackupProcessing = false,
                         backupError = "No hay elementos para exportar"
                     ) }
                     return@launch
                 }
-                val json = gson.toJson(allItems)
+
+                val json = gson.toJson(backup)
                 context.contentResolver.openOutputStream(uri)?.use { out ->
                     out.write(json.toByteArray(Charsets.UTF_8))
                 } ?: throw Exception("No se pudo abrir el archivo de destino")
 
-                val count = allItems.size
-                _state.update { it.copy(
-                    isBackupProcessing = false,
-                    backupSuccess = "✓ Exportados $count elemento${if (count != 1) "s" else ""}"
-                ) }
+                val totalAv = backup.audiovisuales.size
+                val totalImp = backup.impresos.size
+                val mensaje = buildString {
+                    append("✓ Backup exportado: ")
+                    if (totalAv > 0) append("$totalAv audiovisual${if (totalAv != 1) "es" else ""}")
+                    if (totalAv > 0 && totalImp > 0) append(", ")
+                    if (totalImp > 0) append("$totalImp impreso${if (totalImp != 1) "s" else ""}")
+                }
+                _state.update { it.copy(isBackupProcessing = false, backupSuccess = mensaje) }
+
             } catch (e: Exception) {
                 _state.update { it.copy(
                     isBackupProcessing = false,
@@ -252,9 +271,82 @@ class MyListViewModel @Inject constructor(
         }
     }
 
-    // ---- Backup: Importar desde JSON ----
+    // ---- Backup: Importar desde JSON (v2 + retrocompatibilidad v1) ----
 
     fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
+            try {
+                // 1. Leemos el archivo crudo como un simple texto
+                val json = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader(Charsets.UTF_8)
+                    ?.use { it.readText() }
+                    ?.trim()
+                    ?: throw Exception("No se pudo leer el archivo")
+
+                if (json.isBlank()) throw Exception("El archivo está vacío")
+
+                var backup: AppBackup? = null
+
+                // --- PLAN A: Intentar leerlo como V2 (La Mamushka) ---
+                try {
+                    val parsed = gson.fromJson(json, AppBackup::class.java)
+                    // Validamos que Gson no haya creado un objeto vacío por error
+                    if (parsed != null && (parsed.audiovisuales.isNotEmpty() || parsed.impresos.isNotEmpty())) {
+                        backup = AppBackup(
+                            version = parsed.version,
+                            audiovisuales = parsed.audiovisuales,
+                            impresos = parsed.impresos
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Si salta tu famoso error de BEGIN_OBJECT/BEGIN_ARRAY, lo ignoramos en silencio.
+                    // Significa que es un array (V1).
+                }
+
+                // --- PLAN B: Si falló el A, lo leemos como V1 (La Lista Plana) ---
+                if (backup == null) {
+                    try {
+                        val listType = object : TypeToken<List<MediaItemEntity>>() {}.type
+                        val itemsList: List<MediaItemEntity> = gson.fromJson(json, listType)
+                        
+                        backup = AppBackup(
+                            version = 1,
+                            audiovisuales = itemsList ?: emptyList(),
+                            impresos = emptyList()
+                        )
+                    } catch (e: Exception) {
+                        // Si falla acá, el archivo realmente está roto.
+                        throw Exception("El archivo no es compatible: ${e.message}")
+                    }
+                }
+
+                // Verificación de seguridad
+                if (backup.audiovisuales.isEmpty() && backup.impresos.isEmpty()) {
+                    throw Exception("El backup se leyó pero no contiene elementos.")
+                }
+
+                // 2. Guardamos en Room usando la función de tu repositorio
+                repository.restoreBackup(backup)
+
+                // 3. Feedback de éxito al usuario
+                val totalAv = backup.audiovisuales.size
+                val totalImp = backup.impresos.size
+                val mensaje = "✓ Importados: $totalAv audiovisuales y $totalImp impresos"
+                
+                _state.update { it.copy(isBackupProcessing = false, backupSuccess = mensaje) }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _state.update { it.copy(
+                    isBackupProcessing = false,
+                    backupError = "Error: ${e.message}"
+                ) }
+            }
+        }
+    }
+
+    /*fun importBackup(uri: Uri) {
         viewModelScope.launch {
             _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
             try {
@@ -265,20 +357,48 @@ class MyListViewModel @Inject constructor(
 
                 if (json.isBlank()) throw Exception("El archivo está vacío")
 
-                val listType = object : TypeToken<List<MediaItemEntity>>() {}.type
-                val items: List<MediaItemEntity> = gson.fromJson(json, listType)
-                    ?: throw Exception("Formato de backup inválido")
+                // ── Detección de versión ─────────────────────────────────────────
+                // Un backup v2 es un objeto JSON que empieza con '{'.
+                // Un backup v1 (legacy) es un array que empieza con '['.
+                // Gson parsea ambos sin crashear; usamos el campo 'version' como árbitro.
+                val backup: AppBackup = if (json.trimStart().startsWith('{')) {
+                    // Intento v2: parseamos como AppBackup
+                    val parsed = gson.fromJson(json, AppBackup::class.java)
+                        ?: throw Exception("Formato de backup inválido")
 
-                if (items.isEmpty()) throw Exception("El backup no contiene elementos")
+                    if (parsed.version < 2) {
+                        // Es un objeto pero con versión vieja: lo tratamos solo por audiovisuales
+                        AppBackup(audiovisuales = parsed.audiovisuales)
+                    } else {
+                        parsed
+                    }
+                } else {
+                    // Retrocompatibilidad v1: era una lista plana de MediaItemEntity
+                    val listType = object : TypeToken<List<MediaItemEntity>>() {}.type
+                    val items: List<MediaItemEntity> = gson.fromJson(json, listType)
+                        ?: throw Exception("Formato de backup inválido")
+                    AppBackup(audiovisuales = items) // Envolvemos en AppBackup para unificar el flujo
+                }
+                // ────────────────────────────────────────────────────────────────
 
-                // REPLACE: actualiza registros con IDs coincidentes, agrega los nuevos
-                repository.insertAll(items)
+                val totalAv = backup.audiovisuales.size
+                val totalImp = backup.impresos.size
 
-                val count = items.size
-                _state.update { it.copy(
-                    isBackupProcessing = false,
-                    backupSuccess = "✓ Importados $count elemento${if (count != 1) "s" else ""}"
-                ) }
+                if (totalAv == 0 && totalImp == 0) {
+                    throw Exception("El backup no contiene elementos")
+                }
+
+                // restoreBackup() maneja toda la lógica relacional de impresos
+                repository.restoreBackup(backup)
+
+                val mensaje = buildString {
+                    append("✓ Importados: ")
+                    if (totalAv > 0) append("$totalAv audiovisual${if (totalAv != 1) "es" else ""}")
+                    if (totalAv > 0 && totalImp > 0) append(", ")
+                    if (totalImp > 0) append("$totalImp impreso${if (totalImp != 1) "s" else ""}")
+                }
+                _state.update { it.copy(isBackupProcessing = false, backupSuccess = mensaje) }
+
             } catch (e: JsonSyntaxException) {
                 _state.update { it.copy(
                     isBackupProcessing = false,
@@ -291,7 +411,7 @@ class MyListViewModel @Inject constructor(
                 ) }
             }
         }
-    }
+    }*/
 
     fun clearBackupMessages() {
         _state.update { it.copy(backupSuccess = null, backupError = null) }
@@ -313,11 +433,13 @@ class MyListViewModel @Inject constructor(
         viewModelScope.launch { repository.deletePrintItem(item) }
     }
 
-    /*fun plusOnePage(item: PrintMediaEntity) {
+    fun plusOnePrintChapter(item: PrintMediaEntity) {
         viewModelScope.launch {
+            val newChapter = item.currentChapter + 1
+
             repository.updatePrintItem(
-                item.copy(currentPage = item.currentPage + 1)
+                item.copy(currentChapter = newChapter)
             )
         }
-    }*/
+    }
 }
