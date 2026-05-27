@@ -4,7 +4,7 @@
 
 # 👁️ OmniWatch - Track Your Media
 
-OmniWatch es una aplicación nativa de Android diseñada para centralizar y organizar el seguimiento de Películas, Series y Animes. Desarrollada con un enfoque "Offline-First", permite a los usuarios gestionar sus listas personales, descubrir nuevos estrenos y llevar un calendario preciso de lanzamientos sin depender de una conexión constante a internet.
+OmniWatch es una aplicación nativa de Android diseñada para centralizar y organizar el seguimiento de Películas, Series, Animes, **Cómics y Mangas**. Desarrollada con un enfoque "Offline-First", permite a los usuarios gestionar sus listas personales, descubrir nuevos estrenos y llevar un calendario preciso de lanzamientos sin depender de una conexión constante a internet.
 
 ## ✨ Características Principales
 
@@ -20,16 +20,20 @@ OmniWatch es una aplicación nativa de Android diseñada para centralizar y orga
   <img src="assets/calendario.jpg" alt="Pantalla Calendario" width="20%">
 </p>
 
-* **Gestión de Medios:** Organiza tu contenido en listas de estado ("Por ver", "Viendo", "Visto").
-* **Calendario Inteligente:** Visualiza los próximos episodios y estrenos ordenados por fecha y día de la semana.
-* **Soporte Multi-Plataforma:** Etiqueta en qué servicio de streaming (Netflix, Crunchyroll, Prime Video, etc.) estás viendo cada título.
-* **Modo Oscuro Nativo:** Interfaz diseñada con Material Design 3, optimizada para la fatiga visual.
+- **Gestión de Medios:** Organiza tu contenido en listas de estado ("Por ver", "Viendo/Leyendo", "Visto/Leído").
+- **Calendario Inteligente:** Visualiza los próximos episodios y estrenos ordenados por fecha y día de la semana.
+- **Soporte Multi-Plataforma y Autor:** Etiqueta en qué servicio de streaming estás viendo cada título o asigna los autores y editoriales a tus medios físicos.
+- **Modo Oscuro Nativo:** Interfaz diseñada con Material Design 3, optimizada para la fatiga visual y con soporte de íconos temáticos monocromáticos (Android 13+).
 
-### 🚀 Novedades de la Discovery Update
-* **Centro de Descubrimiento:** Nueva pestaña para explorar tendencias de Cine, Series y Anime integrando TMDB y Jikan (MyAnimeList) con memoria cache para uso offline.
-* **Búsqueda Global Inteligente:** Buscador unificado con *Debounce* (Coroutines) que optimiza las llamadas a las APIs, filtrando resultados en tiempo real sin saturar la red.
-* **Guardado Editable:** Tocando las tarjetas de los elemntos vamos a la pantalla _Agregar_ o _Editar_ (si ya esta guardado) con los datos de la tarjeta ya importados.
-* **Quick Save (Guardado Rápido):** Guardado a un toque desde la pestaña "Descubrir", auto-completando y persistiendo fechas exactas de estreno y total de episodios.
+### 🚀 Novedades de la Versión 2.0 (Print Media Update)
+
+- **Biblioteca de Impresos:** Soporte dedicado y separado para el seguimiento de Cómics, Mangas, Manhwas y Novelas Gráficas.
+- **Alternador de Modos (Toggle):** Pestañas dinámicas que permiten alternar instantáneamente entre la colección Audiovisual y la Impresa para mantener una interfaz limpia.
+- **Búsqueda Dual de APIs:** Descubrimiento automatizado utilizando la API de Jikan para obras orientales (Mangas) y la API de ComicVine para cómics occidentales.
+- **Sincronización Total con MyAnimeList:** Importación automática tanto del progreso de Animes como de Mangas directamente desde tu cuenta de MAL, con enriquecimiento de datos On-Demand (Lazy Loading de autores).
+- **Base de Datos Relacional:** Nueva arquitectura que separa el Progreso Global (la franquicia y capítulos totales) del Archivo Local (los tomos y páginas) para una escalabilidad perfecta hacia la lectura local.
+- **Barra de Progreso Inteligente:** Calcula el avance automáticamente adaptándose a la lectura por capítulos o números (issues) en lugar de solo por tomos físicos.
+- **Súper Backup JSON (Sistema Anidado):** Exportación e importación de la base de datos completa con soporte para la nueva estructura compleja (Franquicias y Tomos), manteniendo 100% de retrocompatibilidad con los backups de la v1.x.
 
 ---
 
@@ -37,45 +41,50 @@ OmniWatch es una aplicación nativa de Android diseñada para centralizar y orga
 
 El proyecto sigue los lineamientos recomendados por Google (Modern Android Development):
 
-* **UI:** Jetpack Compose (100% declarativo) + Material Design 3.
-* **Arquitectura:** MVVM (Model-View-ViewModel) + Clean Architecture principles.
-* **Concurrencia y Estado:** Kotlin Coroutines & StateFlow.
-* **Base de Datos Local:** Room Database (Offline-first approach).
-* **Red:** Retrofit2 + OkHttp (Consumo de APIs REST: TMDB, Jikan, MyAnimeList Oficial).
-* **Inyección de Dependencias:** Dagger Hilt.
-* **Imágenes:** Coil (Carga asíncrona y caché de imágenes).
+- **UI:** Jetpack Compose (100% declarativo) + Material Design 3.
+- **Arquitectura:** MVVM (Model-View-ViewModel) + Clean Architecture principles.
+- **Concurrencia y Estado:** Kotlin Coroutines & StateFlow.
+- **Base de Datos Local:** Room Database (Offline-first approach con relaciones 1 a muchos).
+- **Red:** Retrofit2 + OkHttp (Consumo de APIs REST: TMDB, Jikan, MyAnimeList Oficial, ComicVine).
+- **Inyección de Dependencias:** Dagger Hilt.
+- **Imágenes:** Coil (Carga asíncrona y caché de imágenes).
 
 ---
 
 ## 📂 Estructura del Proyecto
 
-La aplicación está modularizada por capas (features) dentro del paquete `com.watchlist.app` para asegurar una clara separación de responsabilidades:
+La aplicación está modularizada por capas (features) dentro del paquete `com.watchlist.app` para asegurar una clara separación de responsabilidades.
 
 ```text
 📦 app/src/main/java/com/watchlist/app
+ ┣ 📂 backup          # Lógica y modelos para exportar/importar JSON anidado (AppBackup)
  ┣ 📂 data
- ┃ ┣ 📂 local       # Entidades de Room, DAOs y Database
- ┃ ┣ 📂 remote      # Servicios de Retrofit (TMDB, Jikan, News) y Modelos DTO
- ┃ ┗ 📂 repository  # Única fuente de verdad (Single Source of Truth)
- ┣ 📂 di            # Módulos de Inyección de Dependencias (Hilt)
- ┣ 📂 navigation    # NavHost, Rutas y Configuración de Jetpack Navigation
- ┣ 📂 ui            # Pantallas (Screens) y componentes de UI
- ┃ ┣ 📂 addmedia
- ┃ ┣ 📂 calendar
- ┃ ┣ 📂 discovery
- ┃ ┣ 📂 home
- ┃ ┣ 📂 mylist
- ┃ ┗ 📂 theme       # Colores, Tipografías y Formas (Material 3)
- ┣ 📂 utils         # Clases de ayuda y formateadores (Ej: Fechas)
- ┗ 📂 viewmodel     # Lógica de presentación y manejo de estado (StateFlow)
+ ┃ ┣ 📂 local         # Entidades de Room (Audiovisuales, Impresos, Cachés), DAOs y Database
+ ┃ ┣ 📂 remote        # Servicios de Retrofit (TMDB, Jikan, ComicVine, MAL Oficial) y DTOs
+ ┃ ┗ 📂 repository    # Única fuente de verdad (Single Source of Truth)
+ ┣ 📂 di              # Módulos de Inyección de Dependencias (Hilt)
+ ┣ 📂 navigation      # NavHost, Rutas y Configuración de Jetpack Navigation
+ ┣ 📂 ui              # Pantallas (Screens) y componentes compartidos de UI
+ ┃ ┣ 📂 addmedia      # Pantalla para agregar Películas, Series y Anime
+ ┃ ┣ 📂 addprintmedia # Pantalla dedicada para agregar Cómics y Mangas
+ ┃ ┣ 📂 calendar      # Calendario de estrenos y seguimiento semanal
+ ┃ ┣ 📂 discovery     # Descubrimiento de tendencias (Audiovisual e Impresos)
+ ┃ ┣ 📂 home          # Pantalla principal (Inicio)
+ ┃ ┣ 📂 mylist        # Biblioteca unificada con toggle (Audiovisual/Impresos)
+ ┃ ┣ 📂 printdetails  # Perfil de franquicia impresa y gestión individual de tomos
+ ┃ ┗ 📂 theme         # Colores, Tipografías y Formas (Material 3)
+ ┣ 📂 utils           # Clases de ayuda y formateadores (Ej: Fechas)
+ ┗ 📂 viewmodel       # Lógica de presentación centralizada (StateFlow)
 ```
+
 ---
 
 ## 📦 Descargar e Instalar (APK)
 
 Podés probar la aplicación directamente en tu dispositivo Android (Requiere API 26+).
-1. Ve a la sección de **[Releases](../../releases)** de este repositorio.
-2. Descarga el archivo `OmniWatch-v1.1.apk`.
+
+1. Ve a la sección de **Releases** de este repositorio.
+2. Descarga el archivo `OmniWatch-v2.0.apk`.
 3. Instálalo en tu dispositivo (asegúrate de tener habilitada la instalación desde orígenes desconocidos).
 
 ---
@@ -83,19 +92,24 @@ Podés probar la aplicación directamente en tu dispositivo Android (Requiere AP
 ## ⚙️ Configuración para Desarrolladores (Clonar y Compilar)
 
 ### 1. Configurar TMDB API Key (Pósters y Autocompletado)
-Para proteger tus credenciales, la app lee las claves desde un archivo local que no se sube a GitHub.
-1. Registrate en https://www.themoviedb.org/settings/api (es gratis).
-2. Copiá tu **API Read Access Token** (el JWT largo).
-3. En la raíz del proyecto, abrí (o creá) el archivo `local.properties`.
-4. Agregá esta línea con tu token (sin comillas ni espacios raros):
+
+Para proteger tus credenciales y evitar baneos, la app lee las claves y tu correo de contacto desde un archivo local que no se sube a GitHub.
+
+1. Registrate en [TMDB](https://www.themoviedb.org/settings/api) para obtener la clave de películas/series y en [ComicVine](https://comicvine.gamespot.com/api/) para la clave de cómics occidentales.
+2. En la raíz del proyecto, abrí (o creá) el archivo `local.properties`.
+3. Agregá estas líneas con tus tokens y tu correo (sin comillas ni espacios raros):
+
 ```properties
 TMDB_API_KEY=tu_token_jwt_largo_aqui
+CV_API_KEY=tu_clave_comicvine_aqui
+CV_EMAIL=tu_correo_de_contacto_aqui
 ```
-*(Nota: La API de Jikan para anime es pública y no requiere clave).*
+
+_(Nota: Las APIs de Jikan para anime/manga son públicas y no requieren clave)._
 
 ### 2. Abrir el proyecto
+
 1. Cloná este repositorio.
 2. Abrí Android Studio y seleccioná **File → Open** (buscá la carpeta del proyecto).
 3. Esperá que Gradle sincronice las dependencias.
 4. Ejecutá en el emulador o dispositivo físico.
-
