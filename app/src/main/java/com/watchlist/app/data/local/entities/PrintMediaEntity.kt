@@ -3,7 +3,7 @@ package com.watchlist.app.data.local.entities
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-enum class PrintType { COMIC, MANGA, MANHWA, GRAPHIC_NOVEL }
+enum class PrintType { COMIC, MANGA, MANHWA, NOVEL }
 enum class ReadStatus { READING, COMPLETED, PLANNED, ON_HOLD }
 
 @Entity(tableName = "print_media_items")

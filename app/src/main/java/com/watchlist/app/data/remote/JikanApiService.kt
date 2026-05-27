@@ -26,11 +26,19 @@ interface JikanApiService {
     // Buscador general de Manga
     @GET("manga")
     suspend fun searchManga(
-        @Query("q") query: String
+        @Query("q") query: String,
+        @Query("type") type: String? = null,
+        @Query("page") page: Int = 1
     ): JikanMangaSearchResponse
 
     @GET("manga/{id}")
     suspend fun getMangaById(
         @Path("id") id: Int
     ): JikanMangaResponse
+
+    @GET("top/manga")
+    suspend fun getTopManga(
+        @Query("type") type: String? = null, // manga, manhwa, novel... si es null trae de todo
+        @Query("filter") filter: String = "bypopularity" // Trae lo más leído
+    ): JikanMangaSearchResponse
 }

@@ -215,7 +215,7 @@ fun MyListScreen(
                             PrintType.COMIC -> 0 
                             PrintType.MANGA -> 1 
                             PrintType.MANHWA -> 2 
-                            PrintType.GRAPHIC_NOVEL -> 3 
+                            PrintType.NOVEL -> 3 
                         },
                         containerColor = MaterialTheme.colorScheme.surface
                     ) {
@@ -223,7 +223,7 @@ fun MyListScreen(
                             PrintType.COMIC to "Cómic", 
                             PrintType.MANGA to "Manga", 
                             PrintType.MANHWA to "Manhwa", 
-                            PrintType.GRAPHIC_NOVEL to "N. Gráfica"
+                            PrintType.NOVEL to "N. Gráfica"
                         ).forEach { (type, label) ->
                             Tab(selected = state.selectedPrintTab == type, onClick = { viewModel.selectPrintTab(type) }, text = { Text(label, fontSize = 11.sp, maxLines = 1) })
                         }
@@ -271,7 +271,7 @@ fun MyListScreen(
                             PrintType.COMIC -> "cómic"
                             PrintType.MANGA -> "manga"
                             PrintType.MANHWA -> "manhwa"
-                            PrintType.GRAPHIC_NOVEL -> "novela gráfica"
+                            PrintType.NOVEL -> "novela gráfica"
                         }
                     }
                     
@@ -319,7 +319,8 @@ fun MyListScreen(
                             onEdit = { navController.navigate(Screen.AddPrintMedia.createRoute(item.id)) },
                             onDelete = { viewModel.deletePrintItem(item) },
                             onPlusOneClick = { viewModel.plusOnePrintChapter(it) },
-                            onReadClick = { /* Opcional: también podrías navegar desde acá */ }
+                            // --- Por ahora solo manda un Toast de aviso ---
+                            onReadClick = { android.widget.Toast.makeText(context, "Próximamente... (v2.5)", android.widget.Toast.LENGTH_SHORT).show() }
                         )
                     }
                 }

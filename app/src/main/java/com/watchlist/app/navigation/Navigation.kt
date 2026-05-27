@@ -32,8 +32,10 @@ sealed class Screen(val route: String) {
         fun createRoute(itemId: Long = -1L, cacheId: Int = -1, query: String = "") =
             "add_media?itemId=$itemId&cacheId=$cacheId&query=${Uri.encode(query)}"
     }
-    object AddPrintMedia : Screen("add_print_media?itemId={itemId}") {
-        fun createRoute(itemId: Long = -1L) = "add_print_media?itemId=$itemId"
+    object AddPrintMedia : Screen("add_print_media?itemId={itemId}&printCacheId={printCacheId}") {
+        fun createRoute(itemId: Long = -1L, printCacheId: Int = -1): String {
+            return "add_print_media?itemId=$itemId&printCacheId=$printCacheId"
+        }
     }
     object PrintDetails : Screen("print_details/{franchiseId}") {
         fun createRoute(franchiseId: Long) = "print_details/$franchiseId"
@@ -109,7 +111,14 @@ fun WatchListNavHost(
         composable(
             route = Screen.AddPrintMedia.route,
             arguments = listOf(
-                navArgument("itemId") { type = NavType.LongType; defaultValue = -1L }
+                navArgument("itemId") {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                },
+                navArgument("printCacheId") {
+                    type = NavType.IntType
+                    defaultValue = -1
+                }
             )
         ) { backStackEntry ->
             val itemId = backStackEntry.arguments?.getLong("itemId") ?: -1L

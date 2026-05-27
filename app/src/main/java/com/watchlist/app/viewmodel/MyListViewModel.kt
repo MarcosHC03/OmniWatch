@@ -277,141 +277,64 @@ class MyListViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
             try {
-                // 1. Leemos el archivo crudo como un simple texto
-                val json = context.contentResolver.openInputStream(uri)
+                // 1. Leemos el archivo en crudo
+                val rawJson = context.contentResolver.openInputStream(uri)
                     ?.bufferedReader(Charsets.UTF_8)
                     ?.use { it.readText() }
                     ?.trim()
                     ?: throw Exception("No se pudo leer el archivo")
 
-                if (json.isBlank()) throw Exception("El archivo está vacío")
+                if (rawJson.isBlank()) throw Exception("El archivo está vacío")
+
+                var jsonToParse = rawJson
+
+                // 2. LA MAGIA QUE DESCUBRISTE (Limpieza a lo bruto para v1.X)
+                if (jsonToParse.startsWith("[") && jsonToParse.length > 2) {
+                    // Borramos TODA llave, corchete o espacio que haya quedado colgando al final.
+                    // Esto deja el texto cortado justo después del último dato (ej: [ {...}, {... )
+                    val podado = jsonToParse.trimEnd(' ', '\n', '\r', '}', ']')
+                    
+                    // Y lo cerramos nosotros mismos a la fuerza de forma perfecta
+                    jsonToParse = "$podado}]"
+                }
 
                 var backup: AppBackup? = null
 
-                // --- PLAN A: Intentar leerlo como V2 (La Mamushka) ---
+                // 3. Ahora sí, se lo pasamos a Gson ya masticado y limpio
                 try {
-                    val parsed = gson.fromJson(json, AppBackup::class.java)
-                    // Validamos que Gson no haya creado un objeto vacío por error
-                    if (parsed != null && (parsed.audiovisuales.isNotEmpty() || parsed.impresos.isNotEmpty())) {
+                    val element = com.google.gson.JsonParser.parseString(jsonToParse)
+                    
+                    if (element.isJsonObject) {
+                        val parsed = gson.fromJson(element, AppBackup::class.java)
                         backup = AppBackup(
                             version = parsed.version,
-                            audiovisuales = parsed.audiovisuales,
-                            impresos = parsed.impresos
+                            audiovisuales = parsed.audiovisuales ?: emptyList(),
+                            impresos = parsed.impresos ?: emptyList()
                         )
+                    } else if (element.isJsonArray) {
+                        val items = gson.fromJson(element, Array<MediaItemEntity>::class.java)
+                        backup = AppBackup(version = 1, audiovisuales = items.toList(), impresos = emptyList())
                     }
                 } catch (e: Exception) {
-                    // Si salta tu famoso error de BEGIN_OBJECT/BEGIN_ARRAY, lo ignoramos en silencio.
-                    // Significa que es un array (V1).
+                    throw Exception("Sintaxis JSON rota: ${e.message}")
                 }
 
-                // --- PLAN B: Si falló el A, lo leemos como V1 (La Lista Plana) ---
-                if (backup == null) {
-                    try {
-                        val listType = object : TypeToken<List<MediaItemEntity>>() {}.type
-                        val itemsList: List<MediaItemEntity> = gson.fromJson(json, listType)
-                        
-                        backup = AppBackup(
-                            version = 1,
-                            audiovisuales = itemsList ?: emptyList(),
-                            impresos = emptyList()
-                        )
-                    } catch (e: Exception) {
-                        // Si falla acá, el archivo realmente está roto.
-                        throw Exception("El archivo no es compatible: ${e.message}")
-                    }
+                if (backup == null || (backup.audiovisuales.isEmpty() && backup.impresos.isEmpty())) {
+                    throw Exception("El backup está vacío.")
                 }
 
-                // Verificación de seguridad
-                if (backup.audiovisuales.isEmpty() && backup.impresos.isEmpty()) {
-                    throw Exception("El backup se leyó pero no contiene elementos.")
-                }
-
-                // 2. Guardamos en Room usando la función de tu repositorio
+                // 4. Guardamos y festejamos
                 repository.restoreBackup(backup)
 
-                // 3. Feedback de éxito al usuario
-                val totalAv = backup.audiovisuales.size
-                val totalImp = backup.impresos.size
-                val mensaje = "✓ Importados: $totalAv audiovisuales y $totalImp impresos"
-                
-                _state.update { it.copy(isBackupProcessing = false, backupSuccess = mensaje) }
+                val msg = "✓ Importados: ${backup.audiovisuales.size} audiovisuales y ${backup.impresos.size} impresos"
+                _state.update { it.copy(isBackupProcessing = false, backupSuccess = msg) }
 
             } catch (e: Exception) {
                 e.printStackTrace()
-                _state.update { it.copy(
-                    isBackupProcessing = false,
-                    backupError = "Error: ${e.message}"
-                ) }
+                _state.update { it.copy(isBackupProcessing = false, backupError = "Error: ${e.message}") }
             }
         }
     }
-
-    /*fun importBackup(uri: Uri) {
-        viewModelScope.launch {
-            _state.update { it.copy(isBackupProcessing = true, backupSuccess = null, backupError = null) }
-            try {
-                val json = context.contentResolver.openInputStream(uri)
-                    ?.bufferedReader(Charsets.UTF_8)
-                    ?.use { it.readText() }
-                    ?: throw Exception("No se pudo abrir el archivo seleccionado")
-
-                if (json.isBlank()) throw Exception("El archivo está vacío")
-
-                // ── Detección de versión ─────────────────────────────────────────
-                // Un backup v2 es un objeto JSON que empieza con '{'.
-                // Un backup v1 (legacy) es un array que empieza con '['.
-                // Gson parsea ambos sin crashear; usamos el campo 'version' como árbitro.
-                val backup: AppBackup = if (json.trimStart().startsWith('{')) {
-                    // Intento v2: parseamos como AppBackup
-                    val parsed = gson.fromJson(json, AppBackup::class.java)
-                        ?: throw Exception("Formato de backup inválido")
-
-                    if (parsed.version < 2) {
-                        // Es un objeto pero con versión vieja: lo tratamos solo por audiovisuales
-                        AppBackup(audiovisuales = parsed.audiovisuales)
-                    } else {
-                        parsed
-                    }
-                } else {
-                    // Retrocompatibilidad v1: era una lista plana de MediaItemEntity
-                    val listType = object : TypeToken<List<MediaItemEntity>>() {}.type
-                    val items: List<MediaItemEntity> = gson.fromJson(json, listType)
-                        ?: throw Exception("Formato de backup inválido")
-                    AppBackup(audiovisuales = items) // Envolvemos en AppBackup para unificar el flujo
-                }
-                // ────────────────────────────────────────────────────────────────
-
-                val totalAv = backup.audiovisuales.size
-                val totalImp = backup.impresos.size
-
-                if (totalAv == 0 && totalImp == 0) {
-                    throw Exception("El backup no contiene elementos")
-                }
-
-                // restoreBackup() maneja toda la lógica relacional de impresos
-                repository.restoreBackup(backup)
-
-                val mensaje = buildString {
-                    append("✓ Importados: ")
-                    if (totalAv > 0) append("$totalAv audiovisual${if (totalAv != 1) "es" else ""}")
-                    if (totalAv > 0 && totalImp > 0) append(", ")
-                    if (totalImp > 0) append("$totalImp impreso${if (totalImp != 1) "s" else ""}")
-                }
-                _state.update { it.copy(isBackupProcessing = false, backupSuccess = mensaje) }
-
-            } catch (e: JsonSyntaxException) {
-                _state.update { it.copy(
-                    isBackupProcessing = false,
-                    backupError = "El archivo no es un backup válido de OmniWatch"
-                ) }
-            } catch (e: Exception) {
-                _state.update { it.copy(
-                    isBackupProcessing = false,
-                    backupError = "Error al importar: ${e.message ?: "error desconocido"}"
-                ) }
-            }
-        }
-    }*/
 
     fun clearBackupMessages() {
         _state.update { it.copy(backupSuccess = null, backupError = null) }

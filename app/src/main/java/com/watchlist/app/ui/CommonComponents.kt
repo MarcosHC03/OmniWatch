@@ -118,7 +118,7 @@ fun PrintTypeBadge(type: PrintType) {
         PrintType.MANGA         -> Triple(Color(0xFFEEEDFE), Color(0xFF534AB7), "MANGA")
         PrintType.MANHWA        -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "MANHWA")
         PrintType.COMIC         -> Triple(Color(0xFFFAECE7), Color(0xFF993C1D), "CÓMIC")
-        PrintType.GRAPHIC_NOVEL -> Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), "NOV. GRÁ.")
+        PrintType.NOVEL -> Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), "NOV. GRÁ.")
     }
     StatusBadge(bg = bg, fg = fg, label = label, textSize = 10)
 }

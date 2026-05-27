@@ -467,10 +467,9 @@ class AddMediaViewModel @Inject constructor(
         if (cacheId <= 0) return
         
         viewModelScope.launch {
-            // Suponiendo que agregaste un método en tu repository para buscar en el caché
             val cachedItem = repository.getDiscoveryCacheItem(cacheId) ?: return@launch
             
-            // Reutilizamos tu lógica de fechas
+            // Reutilizamos lógica de fechas
             val formattedDate = cachedItem.releaseDate.toDisplayDate()
             val dateParts = formattedDate.split("/")
             val rDay = dateParts.getOrNull(0) ?: ""

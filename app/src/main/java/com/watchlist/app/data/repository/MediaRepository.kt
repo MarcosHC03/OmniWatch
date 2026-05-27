@@ -3,11 +3,13 @@ package com.watchlist.app.data.repository
 import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.local.dao.NewsDao
 import com.watchlist.app.data.local.dao.DiscoveryCacheDao
+import com.watchlist.app.data.local.dao.DiscoveryPrintCacheDao
 import com.watchlist.app.data.local.dao.PrintMediaDao
 import com.watchlist.app.data.local.entities.MediaItemEntity
 import com.watchlist.app.data.local.entities.MediaType
 import com.watchlist.app.data.local.entities.WatchStatus
 import com.watchlist.app.data.local.entities.DiscoveryCacheEntity
+import com.watchlist.app.data.local.entities.DiscoveryPrintCacheEntity
 import com.watchlist.app.data.local.entities.PrintType
 import com.watchlist.app.data.local.entities.PrintMediaEntity
 import com.watchlist.app.data.local.entities.ReadStatus
@@ -32,6 +34,8 @@ import com.watchlist.app.data.backup.AppBackup
 import com.watchlist.app.data.backup.PrintBackupItem
 import com.watchlist.app.BuildConfig
 import kotlinx.coroutines.flow.Flow
+//import kotlinx.coroutines.async
+//import kotlinx.coroutines.coroutineScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,6 +44,7 @@ class MediaRepository @Inject constructor(
     private val dao: MediaItemDao,
     private val printDao: PrintMediaDao,
     private val discoveryCacheDao: DiscoveryCacheDao,
+    private val discoveryPrintCacheDao: DiscoveryPrintCacheDao,
     private val tmdbApi: TmdbApiService,
     private val newsApi: NewsApiService,
     private val jikanApiService: JikanApiService,
@@ -54,7 +59,6 @@ class MediaRepository @Inject constructor(
     fun getItemsByType(type: MediaType): Flow<List<MediaItemEntity>> =
         dao.getItemsByType(type)
 
-    // ---- Local DB (Impresos) ----
     fun getAllItems(): Flow<List<MediaItemEntity>> =
         dao.getAllItems()
 
@@ -420,36 +424,36 @@ class MediaRepository @Inject constructor(
         }
     }
 
-    // 1. El tubo directo a la base de datos (Esto carga al instante)
+    //--- Feed de Noticias ---
     val localNewsFlow = newsDao.getAllNews()
 
     suspend fun refreshNewsFromRss() {
         try {
-            // 1. Armamos nuestra lista de diarios a la carta
             val feeds = listOf(
                 Pair("https://somoskudasai.com/feed/", "SomosKudasai"),
                 Pair("https://www.sensacine.com/rss/noticias.xml", "SensaCine"),
-                Pair("https://www.cinepremiere.com.mx/feed/", "Cine PREMIERE")
+                Pair("https://www.lacasadeel.net/feed/", "La Casa de EL"),
+                Pair("https://www.tomosygrapas.com/feed/", "Tomos y Grapas"),
+                Pair("https://www.espaciomarvelita.com/feed/", "Espacio Marvelita")
+                // Trae muchas cosas geek generales
+                //Pair("https://es.ign.com/feed.xml", "IGN")
+                // Noticias en Ingles
+                //Pair("https://comicbook.com/tag/comics/feed/", "Comic Book")
             )
             
             val allArticles = mutableListOf<NewsArticleEntity>()
 
-            // 2. Pasamos a recolectar por cada diario
             for ((url, sourceName) in feeds) {
                 try {
                     val xmlData = rssApi.getRssFeed(url)
                     val articles = RssParser.parse(xmlData, sourceName)
                     allArticles.addAll(articles)
                 } catch (e: Exception) {
-                    // Si un diario falla (ej. Espinof está caído), imprimimos el error 
-                    // pero dejamos que el ciclo 'for' siga con el próximo.
                     e.printStackTrace()
                 }
             }
 
-            // 3. Si recolectamos aunque sea 1 noticia, actualizamos la caché
             if (allArticles.isNotEmpty()) {
-                // Mezclamos la lista y le asignamos una hora secuencial falsa para que la base de datos respete nuestra mezcla al ordenarlas por fecha
                 val timeNow = System.currentTimeMillis()
                 val mixedArticles = allArticles.shuffled().mapIndexed { index, article ->
                     article.copy(publishedAt = timeNow - index) 
@@ -536,12 +540,28 @@ class MediaRepository @Inject constructor(
         discoveryCacheDao.insertAll(items)
     }
 
+    // ---- Memoria / Caché de Descubrimiento IMPRESOS (Offline First) ----
+
+    // Para cuando AddMediaViewModel necesite leer el manga sin internet
+    suspend fun getDiscoveryPrintCacheItem(id: Int): DiscoveryPrintCacheEntity? {
+        return discoveryPrintCacheDao.getById(id)
+    }
+
+    // Para guardar la lista que bajamos de la API y limpiar la basura vieja
+    suspend fun saveToDiscoveryPrintCache(items: List<DiscoveryPrintCacheEntity>) {
+        discoveryPrintCacheDao.clearCache() 
+        discoveryPrintCacheDao.insertAll(items)
+    }
+
     // ---- Local DB (Impresos) ----
     fun getPrintItemsByType(type: PrintType): Flow<List<PrintMediaEntity>> =
-        printDao.getFranchisesByType(type) // <-- Antes era getItemsByType
+        printDao.getFranchisesByType(type)
+
+    fun getAllPrintItems(): Flow<List<PrintMediaEntity>> =
+        printDao.getAllFranchises()
 
     suspend fun getPrintItemById(id: Long): PrintMediaEntity? = 
-        printDao.getFranchiseById(id) // <-- Antes era getById
+        printDao.getFranchiseById(id)
 
     suspend fun insertPrintItem(item: PrintMediaEntity): Long {
         // Si es un ítem nuevo (ID 0), chequeamos si ya existe uno con ese título
@@ -556,16 +576,24 @@ class MediaRepository @Inject constructor(
     }
 
     suspend fun updatePrintItem(item: PrintMediaEntity) = 
-        printDao.updateFranchise(item.copy(updatedAt = System.currentTimeMillis())) // <-- Antes era updateItem
+        printDao.updateFranchise(item.copy(updatedAt = System.currentTimeMillis()))
 
     suspend fun deletePrintItem(item: PrintMediaEntity) {
-        printDao.deleteFranchise(item) // <-- Antes era deleteById(item.id)
+        printDao.deleteFranchise(item)
     }
 
     // Búsqueda de Manga en Jikan (MyAnimeList)
-    suspend fun searchJikanManga(query: String): List<PrintMediaEntity> {
+    suspend fun searchJikanManga(query: String, type: String? = null): List<PrintMediaEntity> {
         return try {
-            val response = jikanApiService.searchManga(query)
+            val response = jikanApiService.searchManga(query, type)
+            
+            // Evaluamos qué tipo le pedimos a la API para guardarlo correctamente
+            val determinedPrintType = when (type) {
+                "manhwa" -> PrintType.MANHWA
+                "novel"  -> PrintType.NOVEL
+                else     -> PrintType.MANGA // Valor por defecto
+            }
+
             response.data.map { manga ->
                 PrintMediaEntity(
                     title = manga.title ?: "Sin título",
@@ -573,7 +601,7 @@ class MediaRepository @Inject constructor(
                     posterPath = manga.images?.jpg?.imageUrl ?: "",
                     synopsis = manga.synopsis ?: "",
                     author = manga.authors?.firstOrNull()?.name ?: "",
-                    printType = PrintType.MANGA,
+                    printType = determinedPrintType,
                     status = ReadStatus.PLANNED,
                     totalVolumes = manga.volumes ?: 0,
                     totalChapters = manga.chapters ?: 0,
@@ -628,9 +656,7 @@ class MediaRepository @Inject constructor(
 
     suspend fun searchComicVine(query: String): List<PrintMediaEntity> {
         return try {
-            val apiKey = BuildConfig.CV_API_KEY
-            
-            val response = comicApi.searchComics(query = query, apiKey = apiKey)
+            val response = comicApi.searchComics(query = query)
             
             response.results.map { volume ->
                 // ComicVine suele devolver la descripción en HTML feo (ej: <p>Spider-Man...</p>)
@@ -653,6 +679,119 @@ class MediaRepository @Inject constructor(
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            // EL DETECTIVE DE COMICVINE 🕵️‍♂️
+            listOf(
+                PrintMediaEntity(
+                    title = "❌ ERROR: ${e.javaClass.simpleName}",
+                    author = "Mensaje: ${e.message}",
+                    posterPath = "",
+                    synopsis = "Revisá si Hilt inyectó bien el OkHttpClient o si la API Key es válida.",
+                    printType = PrintType.COMIC,
+                    status = ReadStatus.PLANNED,
+                    totalVolumes = 0,
+                    totalChapters = 0,
+                    externalId = -1
+                )
+            )
+        }
+    }
+
+    // ---- Misión Impresos: Populares para Descubrimiento ----
+
+    suspend fun getPopularPrintAsReleases(jikanType: String): List<PrintMediaEntity> {
+        return try {
+            val response = jikanApiService.getTopManga(type = jikanType) 
+            
+            // Determinamos el tipo según lo que pedimos a la API
+            val determinedPrintType = when (jikanType) {
+                "manhwa" -> PrintType.MANHWA
+                "novel"  -> PrintType.NOVEL
+                else     -> PrintType.MANGA // Por defecto si es "manga" o cualquier otro
+            }
+
+            response.data.filter { !it.images?.jpg?.imageUrl.isNullOrBlank() }
+                .map { manga ->
+                    PrintMediaEntity(
+                        title = manga.title ?: "Sin título",
+                        originalTitle = manga.titleJapanese ?: "",
+                        posterPath = manga.images?.jpg?.imageUrl ?: "",
+                        synopsis = manga.synopsis ?: "",
+                        author = manga.authors?.firstOrNull()?.name ?: "Autor Desconocido",
+                        printType = determinedPrintType,
+                        status = ReadStatus.PLANNED,
+                        totalVolumes = manga.volumes ?: 0,
+                        totalChapters = manga.chapters ?: 0,
+                        externalId = manga.malId
+                    )
+                }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getLatestComicReleases(): List<PrintMediaEntity> {
+        return try {
+            val marvelQueries = listOf(
+                "Ultimate Spider-Man", "X-Men", "Avengers", "Deadpool", "Daredevil", 
+                "Fantastic Four", "Moon Knight", "Ghost Rider", "Guardians of the Galaxy", 
+                "Venom", "Punisher", "Miles Morales", "Nova", "Doctor Strange", "Wolverine"
+            )
+            val dcQueries = listOf(
+                "Absolute Batman", "Action Comics", "Superman", "Justice League", "Nightwing", 
+                "Aquaman", "Flash", "Green Lantern", "Wonder Woman", "Teen Titans", 
+                "Batgirl", "Shazam", "Suicide Squad", "Constantine", "Green Arrow"
+            )
+            
+            val selectedMarvel = marvelQueries.shuffled().take(3)
+            val selectedDc = dcQueries.shuffled().take(3)
+            
+            val mixedQueries = (selectedMarvel + selectedDc).shuffled()
+            val allResults = mutableListOf<PrintMediaEntity>()
+            
+            for (query in mixedQueries) {
+                val results = fetchRecentVolumes(query, 10)
+                allResults.addAll(results)
+                
+                kotlinx.coroutines.delay(300) 
+            }
+            
+            allResults
+                .distinctBy { it.title.trim().lowercase() }
+                .shuffled()
+                .take(20)
+                
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    private suspend fun fetchRecentVolumes(franchiseName: String, limitCount: Int): List<PrintMediaEntity> {
+        return try {
+            val response = comicApi.getLatestVolumes(
+                limit = limitCount,
+                filter = "name:$franchiseName"
+            )
+            
+            response.results.map { volume ->
+                // NOTA: Asegurate de que estas variables coincidan con tu modelo de ComicVineVolume
+                val cleanSynopsis = volume.description?.replace(Regex("<.*?>"), "")?.trim() ?: "Sin descripción"
+                val authorOrPublisher = volume.publisher?.name ?: "Editorial Desconocida"
+                val poster = volume.image?.medium_url ?: ""
+                
+                PrintMediaEntity(
+                    title = volume.name ?: "Sin título", 
+                    author = authorOrPublisher,
+                    posterPath = poster,
+                    synopsis = cleanSynopsis,
+                    printType = PrintType.COMIC,
+                    status = ReadStatus.PLANNED,
+                    totalVolumes = volume.count_of_issues ?: 0,
+                    totalChapters = 0,
+                    externalId = volume.id ?: 0
+                )
+            }
+        } catch (e: Exception) {
             emptyList()
         }
     }

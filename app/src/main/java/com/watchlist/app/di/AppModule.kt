@@ -6,6 +6,7 @@ import com.watchlist.app.BuildConfig
 import com.watchlist.app.data.local.WatchListDatabase
 import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.local.dao.DiscoveryCacheDao
+import com.watchlist.app.data.local.dao.DiscoveryPrintCacheDao
 import com.watchlist.app.data.local.dao.PrintMediaDao
 import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
@@ -46,6 +47,11 @@ object AppModule {
     
     @Provides
     fun provideDiscoveryCacheDao(db: WatchListDatabase): DiscoveryCacheDao = db.discoveryCacheDao()
+
+    @Provides
+    fun provideDiscoveryPrintCacheDao(db: WatchListDatabase): DiscoveryPrintCacheDao {
+        return db.discoveryPrintCacheDao()
+    }
 
     @Provides
     fun providePrintMediaDao(db: WatchListDatabase): PrintMediaDao {
@@ -112,16 +118,21 @@ object AppModule {
     @Singleton
     @Named("comic")
     fun provideComicOkHttpClient(): OkHttpClient {
-        val userAgentInterceptor = Interceptor { chain ->
-            val request = chain.request().newBuilder()
-                // ComicVine exige un User-Agent personalizado con tu correo real para identificar tu app.
-                .header("User-Agent", "OmniWatchApp/2.0 (${BuildConfig.CV_EMAIL})")
+        val comicInterceptor = Interceptor { chain ->
+            val original = chain.request()
+            val url = original.url.newBuilder()
+                .addQueryParameter("api_key", BuildConfig.CV_API_KEY)
+                .build()
+            val request = original.newBuilder()
+                .url(url)
+                .header("User-Agent", "OmniWatchApp_Marcos (${BuildConfig.CV_EMAIL})")
                 .build()
             chain.proceed(request)
         }
         return OkHttpClient.Builder()
-            .addInterceptor(userAgentInterceptor)
+            .addInterceptor(comicInterceptor)
             .addInterceptor(HttpLoggingInterceptor().apply {
+                // TRUCO: Cambiá BASIC por BODY temporalmente si querés ver exactamente qué responde la API
                 level = HttpLoggingInterceptor.Level.BASIC
             })
             .build()
@@ -180,18 +191,19 @@ object AppModule {
     @Singleton
     fun provideRssApiService(): RssApiService =
         Retrofit.Builder()
-            .baseUrl("https://dummy.com/") // La URL base no importa porque pasamos la URL completa en el GET
-            .addConverterFactory(ScalarsConverterFactory.create()) // <-- Magia para leer XML
+            .baseUrl("https://dummy.com/")
+            .addConverterFactory(ScalarsConverterFactory.create())
             .build()
             .create(RssApiService::class.java)
     
     @Provides
     @Singleton
-    fun provideComicApiService(@Named("comic") client: OkHttpClient): ComicApiService =
-        Retrofit.Builder()
+    fun provideComicApiService(@Named("comic") client: OkHttpClient): ComicApiService {
+        return Retrofit.Builder()
             .baseUrl("https://comicvine.gamespot.com/api/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ComicApiService::class.java)
+    }
 }

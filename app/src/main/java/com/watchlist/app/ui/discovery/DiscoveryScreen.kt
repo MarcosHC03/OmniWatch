@@ -8,11 +8,17 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +35,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.watchlist.app.data.local.entities.MediaType
+import com.watchlist.app.data.local.entities.PrintMediaEntity
 import com.watchlist.app.data.remote.TmdbRelease
 import com.watchlist.app.ui.WatchListBottomBar
 import com.watchlist.app.viewmodel.DiscoveryViewModel
@@ -44,101 +51,125 @@ fun DiscoveryScreen(
     navController: NavHostController,
     viewModel: DiscoveryViewModel = hiltViewModel()
 ) {
-    val state   by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Cine", "Series")
-
-    // Snackbar para errores de red
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(state.error) {
-        state.error?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.clearError()
-        }
-    }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-            ) {
-                // ── Barra de título ──────────────────────────────────────────
+            Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
                 TopAppBar(
                     title = { Text("Descubrí", fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton(onClick = { viewModel.loadContent() }) {
+                        IconButton(onClick = { viewModel.forceRefresh() }) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Recargar")
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
+                    }
                 )
 
                 // ── Buscador ─────────────────────────────────────────────────
                 OutlinedTextField(
-                    value         = state.searchQuery,
+                    value = state.searchQuery,
                     onValueChange = { viewModel.onSearchQueryChange(it) },
-                    placeholder   = { Text("Buscar estrenos...") },
-                    singleLine    = true,
-                    shape         = RoundedCornerShape(14.dp),
-                    modifier      = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                    placeholder = { Text(if(state.isPrintMode) "Buscar manga, cómic..." else "Buscar estrenos...") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                 )
 
-                // ── Chips de filtro ──────────────────────────────────────────────────
+                // ── Selector de Modo (TV / Libro) ─────────────────────────────
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    SegmentedButton(
+                        selected = !state.isPrintMode,
+                        onClick = { viewModel.toggleMode(false) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        icon = { Icon(Icons.Default.Tv, contentDescription = null) }
+                    ) { Text("Audiovisual") }
+                    
+                    SegmentedButton(
+                        selected = state.isPrintMode,
+                        onClick = { viewModel.toggleMode(true) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        icon = { Icon(Icons.Default.MenuBook, contentDescription = null) }
+                    ) { Text("Impresos") }
+                }
+
+                // ── Chips Dinámicos ──────────────────────────────────────────
+                val currentTabs = if (state.isPrintMode) 
+                    listOf("Mangas", "Manhwas", "Novelas", "Cómics")
+                else 
+                    listOf("Cine", "Series", "Anime")
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf("Cine", "Series", "Anime").forEachIndexed { index, label ->
+                    currentTabs.forEachIndexed { index, label ->
                         FilterChip(
-                            selected = selectedTab == index,
-                            onClick  = { selectedTab = index },
-                            label    = { Text(label, fontSize = 13.sp) }
+                            selected = if (state.isPrintMode) state.selectedPrintTab == index else selectedTab == index,
+                            onClick = { 
+                                if (state.isPrintMode) {
+                                    viewModel.onPrintTabChange(index)
+                                } else {
+                                    selectedTab = index
+                                }
+                            },
+                            label = { Text(label, fontSize = 13.sp) }
                         )
                     }
                 }
             }
         },
-        bottomBar    = { WatchListBottomBar(navController) },
+        bottomBar = { WatchListBottomBar(navController) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            when {
-                state.isLoading -> CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center)
-                )
-
-                else -> {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (state.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else {
+                if (state.isPrintMode) {
+                    PrintReleaseGrid(
+                        items = state.filteredPrintItems,
+                        savedMap = state.savedPrintMap,
+                        onQuickSave = { viewModel.quickSavePrint(it) },
+                        onClick = { item ->
+                            val existingItemId = state.savedPrintMap[item.externalId]
+                            
+                            if (existingItemId != null) {
+                                // Ya lo tenés en tu biblioteca -> Abrimos en modo Edición
+                                navController.navigate(
+                                    Screen.AddPrintMedia.createRoute(itemId = existingItemId)
+                                )
+                            } else {
+                                // Es un descubrimiento nuevo -> Abrimos leyendo del Caché Offline
+                                navController.navigate(
+                                    Screen.AddPrintMedia.createRoute(printCacheId = item.externalId)
+                                )
+                            }
+                        }
+                    )
+                } else {
                     val (list, mediaType) = when (selectedTab) {
-                        0    -> state.filteredMovies to MediaType.MOVIE
-                        1    -> state.filteredTv     to MediaType.SERIES
-                        else -> state.filteredAnime  to MediaType.ANIME
+                        0 -> state.filteredMovies to MediaType.MOVIE
+                        1 -> state.filteredTv to MediaType.SERIES
+                        else -> state.filteredAnime to MediaType.ANIME
                     }
 
                     if (list.isEmpty()) {
-                        EmptyDiscovery(
-                            query     = state.searchQuery,
-                            modifier  = Modifier.align(Alignment.Center)
-                        )
+                        EmptyDiscovery(query = state.searchQuery, modifier = Modifier.align(Alignment.Center))
                     } else {
                         ReleaseGrid(
                             releases      = list,
                             savedMap      = state.savedReleaseMap,
                             mediaType     = mediaType,
                             onQuickSave   = { release ->
-                                viewModel.quickSave(release, mediaType)
+                                viewModel.quickSaveMedia(release, mediaType)
                                 Toast.makeText(context, "Agregado a Por Ver", Toast.LENGTH_SHORT).show()
                             },
                             onClick = { release ->
@@ -163,7 +194,6 @@ fun DiscoveryScreen(
         }
     }
 }
-
 // ---------------------------------------------------------------------------
 // Grilla de estrenos
 // ---------------------------------------------------------------------------
@@ -201,6 +231,7 @@ private fun ReleaseGrid(
 // Tarjeta individual
 // ---------------------------------------------------------------------------
 
+// --- Tarjeta Audiovisuales ---
 @Composable
 private fun ReleaseCard(
     release: TmdbRelease,
@@ -287,6 +318,72 @@ private fun ReleaseCard(
                     color    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                 )
             }
+        }
+    }
+}
+
+// --- Tarjeta Impresos ---
+@Composable
+private fun PrintCard(
+    item: PrintMediaEntity,
+    isSaved: Boolean,
+    onQuickSave: () -> Unit,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }
+    ) {
+        Box {
+            AsyncImage(
+                model = item.posterPath,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+            )
+            
+            Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                QuickSaveButton(isSaved = isSaved, onClick = onQuickSave)
+            }
+        }
+
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(text = item.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = item.author, 
+                fontSize = 11.sp, 
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun PrintReleaseGrid(
+    items: List<PrintMediaEntity>,
+    savedMap: Map<Int, Long>,
+    onQuickSave: (PrintMediaEntity) -> Unit,
+    onClick: (PrintMediaEntity) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(
+            items = items,
+            key = { it.externalId } // Usamos externalId porque es impreso
+        ) { printItem ->
+            PrintCard(
+                item = printItem,
+                isSaved = savedMap.containsKey(printItem.externalId),
+                onQuickSave = { onQuickSave(printItem) },
+                onClick = { onClick(printItem) }
+            )
         }
     }
 }

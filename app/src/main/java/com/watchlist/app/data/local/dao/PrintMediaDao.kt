@@ -14,6 +14,9 @@ interface PrintMediaDao {
     @Query("SELECT * FROM print_media_items WHERE printType = :type ORDER BY updatedAt DESC")
     fun getFranchisesByType(type: PrintType): Flow<List<PrintMediaEntity>>
 
+    @Query("SELECT * FROM print_media_items ORDER BY updatedAt DESC")
+    fun getAllFranchises(): Flow<List<PrintMediaEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFranchise(item: PrintMediaEntity): Long
 

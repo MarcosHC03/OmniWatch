@@ -32,6 +32,8 @@ import com.watchlist.app.ui.FormLabel
 import com.watchlist.app.ui.StarRatingBar
 import com.watchlist.app.viewmodel.AddPrintMediaViewModel
 import com.watchlist.app.viewmodel.AddPrintUiState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,9 +45,9 @@ fun AddPrintMediaScreen(
     val state by viewModel.uiState.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
 
-    LaunchedEffect(itemId) {
-        if (itemId > 0) viewModel.loadItemForEditing(itemId)
-    }
+    // El ID ya se maneja en el init del ViewModel gracias al SavedStateHandle, 
+    // así que no hace falta disparar el loadItemForEditing desde la UI.
+    
     LaunchedEffect(state.savedSuccessfully) {
         if (state.savedSuccessfully) onNavigateBack()
     }
@@ -89,7 +91,7 @@ fun AddPrintMediaScreen(
                         onValueChange = { searchQuery = it },
                         placeholder = {
                             Text(
-                                if (state.printType == PrintType.COMIC || state.printType == PrintType.GRAPHIC_NOVEL)
+                                if (state.printType == PrintType.COMIC || state.printType == PrintType.NOVEL)
                                     "Buscar en ComicVine..."
                                 else
                                     "Buscar en Jikan..."
@@ -269,11 +271,6 @@ fun AddPrintMediaScreen(
 
 // ── Sección de tomos y capítulos ──────────────────────────────────────────────
 
-/**
- * Análoga a EpisodesSection en AddMediaScreen.
- * Adapta las etiquetas según si la obra es un cómic occidental o asiática.
- * Los campos de "leídos" se deshabilitan automáticamente si el estado es PLANNED.
- */
 @Composable
 private fun VolumesSection(
     state: AddPrintUiState,
@@ -282,7 +279,7 @@ private fun VolumesSection(
     onCurrentChapterChange: (String) -> Unit,
     onTotalChaptersChange: (String) -> Unit
 ) {
-    val isComic = state.printType == PrintType.COMIC || state.printType == PrintType.GRAPHIC_NOVEL
+    val isComic = state.printType == PrintType.COMIC || state.printType == PrintType.NOVEL
     val progressDisabled = state.status == ReadStatus.PLANNED
 
     val currentVolLabel  = if (isComic) "TPBs leídos"       else "Tomos ya leídos"
@@ -292,7 +289,6 @@ private fun VolumesSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 
-        // Fila superior: progreso en tomos + total de tomos
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 value = state.currentVolume,
@@ -315,7 +311,6 @@ private fun VolumesSection(
             )
         }
 
-        // Fila inferior: progreso en capítulos + total de capítulos
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 value = state.currentChapter,
@@ -342,10 +337,6 @@ private fun VolumesSection(
 
 // ── Item de resultado de búsqueda ─────────────────────────────────────────────
 
-/**
- * Análogo a TmdbResultItem en AddMediaScreen.
- * Muestra miniatura + título + metadatos del resultado de Jikan / ComicVine.
- */
 @Composable
 private fun PrintSearchResultItem(item: PrintMediaEntity, onClick: () -> Unit) {
     Row(

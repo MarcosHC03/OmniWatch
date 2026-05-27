@@ -5,17 +5,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -205,6 +210,33 @@ fun NewsCard(article: com.watchlist.app.data.local.entities.NewsArticleEntity) {
                         .clip(RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)),
                     contentScale = ContentScale.Crop
                 )
+            } else {
+                /*
+                Image(
+                    painter = painterResource(id = R.drawable.ic_comic_placeholder),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .width(100.dp)
+                        .height(90.dp)
+                        .clip(RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                */
+                
+                Box(
+                    modifier = Modifier
+                        .width(100.dp)
+                        .height(90.dp)
+                        .clip(RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp))
+                        .background(Color.DarkGray), // Un fondo oscuro para que resalte el emoji
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "📰", // Podés cambiarlo por "📖", "🦇" o "Sin Imagen"
+                        fontSize = 48.sp
+                    )
+                }
+                
             }
             Column(
                 Modifier
