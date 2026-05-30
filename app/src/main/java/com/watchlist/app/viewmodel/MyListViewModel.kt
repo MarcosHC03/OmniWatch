@@ -121,7 +121,7 @@ class MyListViewModel @Inject constructor(
                         WatchStatus.WATCHING -> ReadStatus.READING
                         WatchStatus.COMPLETED -> ReadStatus.COMPLETED
                         WatchStatus.PLANNED -> ReadStatus.PLANNED
-                        null -> null
+                        else -> null
                     }
                     
                     val filteredItems = if (mappedStatus != null) {
@@ -344,11 +344,95 @@ class MyListViewModel @Inject constructor(
         _state.update { it.copy(importSuccess = null, importError = null) }
     }
 
+    // ---- Lógica de Incremento y Cambios de Estado Automáticos ----
     fun plusOneEpisode(item: MediaItemEntity) {
         viewModelScope.launch {
-            repository.updateItem(
-                item.copy(watchedEpisodes = item.watchedEpisodes + 1)
+            val nuevoContadorVistos = item.watchedEpisodes + 1
+            val tieneTopeEstricto = item.totalEpisodes > 0 && !item.isAiring
+
+            val nuevoEstado = when {
+                tieneTopeEstricto && nuevoContadorVistos >= item.totalEpisodes -> WatchStatus.COMPLETED
+                nuevoContadorVistos > 0 -> WatchStatus.WATCHING
+                else -> WatchStatus.PLANNED
+            }
+
+            val updatedItem = item.copy(
+                watchedEpisodes = nuevoContadorVistos,
+                watchStatus = nuevoEstado
             )
+
+            repository.updateItem(updatedItem)
+
+            // DISPARADOR: Si el total es desconocido (0) o es una serie activa, busca el total real
+            if (item.totalEpisodes == 0 || item.isAiring) {
+                syncEpisodesSilently(updatedItem)
+            }
+        }
+    }
+
+    fun updateWatchedEpisodes(item: MediaItemEntity, nuevoNumeroVistos: Int) {
+        viewModelScope.launch {
+            val tieneTopeEstricto = item.totalEpisodes > 0 && !item.isAiring
+
+            // Evaluamos el estado según el número que ingresó el usuario
+            val nuevoEstado = when {
+                tieneTopeEstricto && nuevoNumeroVistos >= item.totalEpisodes -> WatchStatus.COMPLETED
+                nuevoNumeroVistos > 0 -> WatchStatus.WATCHING
+                else -> WatchStatus.PLANNED
+            }
+
+            val updatedItem = item.copy(
+                watchedEpisodes = nuevoNumeroVistos,
+                watchStatus = nuevoEstado
+            )
+
+            repository.updateItem(updatedItem)
+
+            // El sabueso silencioso busca el total real solo una vez
+            if (item.totalEpisodes == 0 || item.isAiring) {
+                syncEpisodesSilently(updatedItem)
+            }
+        }
+    }
+
+    fun startViewingWithDefaults(item: MediaItemEntity) {
+        viewModelScope.launch {
+            val updatedItem = item.copy(
+                watchStatus = WatchStatus.WATCHING,
+                currentSeason = if (item.currentSeason == 0) 1 else item.currentSeason,
+                watchedEpisodes = 1
+            )
+            
+            repository.updateItem(updatedItem)
+
+            // DISPARADOR: Al pasar de "Por ver" a "Viendo", asegura el total de capítulos oficial
+            syncEpisodesSilently(updatedItem)
+        }
+    }
+
+    // ── El Sabueso Silencioso ──
+    private fun syncEpisodesSilently(item: MediaItemEntity) {
+        if (item.mediaType == MediaType.MOVIE || item.tmdbId == 0) return
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val totalOficial = when (item.mediaType) {
+                    MediaType.SERIES -> {
+                        val tvDetails = repository.getTvDetails(item.tmdbId)
+                        tvDetails?.seasons?.find { it.seasonNumber == item.currentSeason }?.episodeCount ?: 0
+                    }
+                    MediaType.ANIME -> {
+                        repository.getAnimeDetails(item.tmdbId) ?: 0
+                    }
+                    else -> 0
+                }
+
+                if (totalOficial > 0 && totalOficial != item.totalEpisodes) {
+                    repository.updateItem(item.copy(totalEpisodes = totalOficial))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

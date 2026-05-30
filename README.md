@@ -25,7 +25,7 @@ OmniWatch es una aplicación nativa de Android diseñada para centralizar y orga
 - **Soporte Multi-Plataforma y Autor:** Etiqueta en qué servicio de streaming estás viendo cada título o asigna los autores y editoriales a tus medios físicos.
 - **Modo Oscuro Nativo:** Interfaz diseñada con Material Design 3, optimizada para la fatiga visual y con soporte de íconos temáticos monocromáticos (Android 13+).
 
-### 🚀 Novedades de la Versión 2.0 (Print Media Update)
+### 🚀 Novedades de la Versión 2.1 (Print Media and UI/UX Update)
 
 - **Biblioteca de Impresos:** Soporte dedicado y separado para el seguimiento de Cómics, Mangas, Manhwas y Novelas Gráficas.
 - **Alternador de Modos (Toggle):** Pestañas dinámicas que permiten alternar instantáneamente entre la colección Audiovisual y la Impresa para mantener una interfaz limpia.
@@ -34,6 +34,11 @@ OmniWatch es una aplicación nativa de Android diseñada para centralizar y orga
 - **Base de Datos Relacional:** Nueva arquitectura que separa el Progreso Global (la franquicia y capítulos totales) del Archivo Local (los tomos y páginas) para una escalabilidad perfecta hacia la lectura local.
 - **Barra de Progreso Inteligente:** Calcula el avance automáticamente adaptándose a la lectura por capítulos o números (issues) en lugar de solo por tomos físicos.
 - **Súper Backup JSON (Sistema Anidado):** Exportación e importación de la base de datos completa con soporte para la nueva estructura compleja (Franquicias y Tomos), manteniendo 100% de retrocompatibilidad con los backups de la v1.x.
+- **Máquina de Estados Sincronizada:** El contador de episodios ahora controla el estado de reproducción de forma automatizada. Si una serie marcada como "Visto" recibe nuevos capítulos (ej. estrenos de temporada), la tarjeta detecta la desincronización y reactiva el botón `+` para devolverla automáticamente a "Viendo" al interactuar.
+- **Inicio Rápido desde "Por Ver":** Al presionar el botón `+` en un elemento pendiente, se despliega un diálogo inteligente que permite inicializar la serie de forma express (`Temporada 1 - 1/?`) o saltar directamente a la pantalla de edición detallada para configurar los datos a mano.
+- **El Sabueso Silencioso (Background Sync):** Implementación de un buscador asíncrono *Offline-First* conectado en segundo plano con TMDB y Jikan. Al sumar un episodio o iniciar una serie, el sistema valida de forma silenciosa el total oficial de capítulos por ID, actualizando el tope real en la base de datos sin interrumpir al usuario y blindado con escudos ante caídas de red.
+- **Click Largo Avanzado (Control Gestual):** Manteniendo presionado el botón `+` se activa una micro-interacción premium que despliega un panel numérico enfocado. El usuario puede ingresar directamente el capítulo exacto en el que se quedó, ideal para registrar maratones de corrido y evitar llamadas repetitivas a las APIs.
+- **Empty States Interactivos:** Rediseño total de las pantallas vacías tanto en el modo Audiovisual como en Impresos. Se eliminaron los callejones sin salida; ahora, según la pestaña activa (Viendo, Visto, Por Ver), el sistema presenta botones contextuales inteligentes en vertical para saltar a solapas pendientes, añadir contenido local o redirigir directamente al Centro de Descubrimiento.
 
 ---
 

@@ -16,7 +16,6 @@ import com.watchlist.app.data.local.entities.ReadStatus
 import com.watchlist.app.data.local.entities.NewsArticleEntity
 import com.watchlist.app.data.local.entities.PrintVolumeEntity
 import com.watchlist.app.data.local.entities.PrintFranchiseWithVolumes
-import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.NewsArticle
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.TmdbMedia
@@ -46,7 +45,6 @@ class MediaRepository @Inject constructor(
     private val discoveryCacheDao: DiscoveryCacheDao,
     private val discoveryPrintCacheDao: DiscoveryPrintCacheDao,
     private val tmdbApi: TmdbApiService,
-    private val newsApi: NewsApiService,
     private val jikanApiService: JikanApiService,
     private val malApi: MalApiService,
     private val malDataApi: MalDataApiService,
@@ -170,11 +168,6 @@ class MediaRepository @Inject constructor(
     suspend fun getTvDetails(tvId: Int): TmdbTvDetails? =
         runCatching { tmdbApi.getTvDetails(tvId) }.getOrNull()
 
-    // ---- News Remote ----
-
-    suspend fun getEntertainmentNews(): List<NewsArticle> =
-        runCatching { newsApi.getEntertainmentNews().articles }.getOrDefault(emptyList())
-
     // ---- MyAnimeList (Jikan) ----
 
     suspend fun importFromMyAnimeList(username: String) {
@@ -265,7 +258,6 @@ class MediaRepository @Inject constructor(
         }
     }
 
-
     /**
      * Convierte fechas de MAL ("yyyy-MM-dd" o "yyyy-MM") al formato de la app "dd/MM/yyyy".
      * Devuelve "" si la entrada es nula, vacía o no parseable.
@@ -286,6 +278,18 @@ class MediaRepository @Inject constructor(
             } catch (_: Exception) { }
         }
         return "" // Formato desconocido — no perdemos el dato pero tampoco rompemos
+    }
+
+    suspend fun getAnimeDetails(animeId: Int): Int? {
+        return try {
+            val response = jikanApiService.getAnimeById(animeId)
+            
+            // Jikan v4 envuelve todo adentro de un objeto "data"
+            response.data?.episodes
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     // Descarga la lista oficial y la guarda en la base de datos

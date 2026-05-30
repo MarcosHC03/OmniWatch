@@ -8,7 +8,6 @@ import com.watchlist.app.data.local.dao.MediaItemDao
 import com.watchlist.app.data.local.dao.DiscoveryCacheDao
 import com.watchlist.app.data.local.dao.DiscoveryPrintCacheDao
 import com.watchlist.app.data.local.dao.PrintMediaDao
-import com.watchlist.app.data.remote.NewsApiService
 import com.watchlist.app.data.remote.TmdbApiService
 import com.watchlist.app.data.remote.MalApiService
 import com.watchlist.app.data.remote.RssApiService
@@ -149,16 +148,6 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(TmdbApiService::class.java)
-
-    @Provides
-    @Singleton
-    fun provideNewsApiService(@Named("news") client: OkHttpClient): NewsApiService =
-        Retrofit.Builder()
-            .baseUrl("https://newsapi.org/")
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(NewsApiService::class.java)
 
     @Provides
     @Singleton

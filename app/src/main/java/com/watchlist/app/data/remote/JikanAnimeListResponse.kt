@@ -25,6 +25,14 @@ data class JikanAnimeSearchResponse(
     @SerializedName("data") val data: List<JikanAnimeNode>
 )
 
+data class JikanAnimeDetailResponse(
+    val data: JikanAnimeData?
+)
+
+data class JikanAnimeData(
+    val episodes: Int?
+)
+
 // Los datos puros de la serie/película
 data class JikanAnimeNode(
     @SerializedName("mal_id") val malId: Int,

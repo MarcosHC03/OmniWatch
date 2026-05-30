@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -29,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -48,7 +53,7 @@ import com.watchlist.app.ui.ReadStatusBadge
 import com.watchlist.app.viewmodel.MyListViewModel
 import com.watchlist.app.viewmodel.ListMode
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MyListScreen(
     navController: NavHostController,
@@ -57,6 +62,10 @@ fun MyListScreen(
     val state by viewModel.uiState.collectAsState()
     var showSearch by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    var showStartViewingDialog by remember { mutableStateOf(false) }
+    var showFinSeasonDialog by remember { mutableStateOf(false) }
+    var selectedMediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var showCustomEpisodeDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -202,10 +211,18 @@ fun MyListScreen(
                 // ── TABS DINÁMICOS SEGÚN EL MODO ──
                 if (state.listMode == ListMode.AUDIOVISUAL) {
                     TabRow(
-                        selectedTabIndex = when (state.selectedTab) { MediaType.SERIES -> 0; MediaType.MOVIE -> 1; MediaType.ANIME -> 2 },
+                        selectedTabIndex = when (state.selectedTab) {
+                            MediaType.SERIES -> 0
+                            MediaType.MOVIE -> 1
+                            MediaType.ANIME -> 2
+                            },
                         containerColor = MaterialTheme.colorScheme.surface
                     ) {
-                        listOf(MediaType.SERIES to "Series", MediaType.MOVIE to "Películas", MediaType.ANIME to "Anime").forEach { (type, label) ->
+                        listOf(
+                            MediaType.SERIES to "Series",
+                            MediaType.MOVIE to "Películas",
+                            MediaType.ANIME to "Anime"
+                        ).forEach {(type, label) ->
                             Tab(selected = state.selectedTab == type, onClick = { viewModel.selectTab(type) }, text = { Text(label, fontSize = 13.sp) })
                         }
                     }
@@ -229,7 +246,7 @@ fun MyListScreen(
                         }
                     }
                 }
-
+                // ── FILTRO DE ESTADO (Chips) ──
                 FilterStatusRow(selectedStatus = state.filterStatus, listMode = state.listMode, onFilterChanged = { viewModel.setFilter(it) })
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
             }
@@ -255,7 +272,10 @@ fun MyListScreen(
 
         if (itemsAreEmpty) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                ) {
                     Text("Nada por acá todavía 👀", fontSize = 16.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
                     
@@ -277,12 +297,100 @@ fun MyListScreen(
                     
                     Text("Tocá + para agregar tu primer $tipoTexto", color = MaterialTheme.colorScheme.onSurface.copy(0.5f), fontSize = 13.sp)
                     
+                    Spacer(Modifier.height(24.dp))
+
+                    // ── 1. BOTONES CONTEXTUALES: AUDIOVISUAL ──
+                    if (state.listMode == ListMode.AUDIOVISUAL) {
+                        when (state.filterStatus) {
+                            WatchStatus.WATCHING -> {
+                                // Caso "Viendo" vacío -> Sugiere ir a la solapa de pendientes "Por Ver"
+                                Button(
+                                    onClick = { viewModel.setFilter(WatchStatus.PLANNED) },
+                                    modifier = Modifier.fillMaxWidth(0.8f)
+                                ) {
+                                    Text("Explorar mi lista 'Por Ver'")
+                                }
+                            }
+                            WatchStatus.COMPLETED, WatchStatus.PLANNED -> {
+                                // Caso "Visto" o "Por ver" vacíos -> Sugiere crear uno de cero
+                                Button(
+                                    onClick = { navController.navigate(Screen.AddMedia.createRoute(-1)) },
+                                    modifier = Modifier.fillMaxWidth(0.8f)
+                                ) {
+                                    Text("Agregar $tipoTexto a mano")
+                                }
+                            }
+                            else -> {}
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Botón de Discovery (Siempre visible abajo en Audiovisual)
+                        OutlinedButton(
+                            onClick = { 
+                                navController.navigate(Screen.Discovery.route) {
+                                    launchSingleTop = true
+                                    restoreState = true
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(0.8f)
+                        ) {
+                            Text("Buscar en el Centro de Descubrimiento")
+                        }
+                    } 
+                    // ── 2. BOTONES CONTEXTUALES: IMPRESOS (PRINTED) ──
+                    else {
+                        when (state.filterStatus) {
+                            WatchStatus.WATCHING -> { // Equivalente a "Leyendo"
+                                Button(
+                                    onClick = { viewModel.setFilter(WatchStatus.PLANNED) }, // Manda a "Por Leer"
+                                    modifier = Modifier.fillMaxWidth(0.8f)
+                                ) {
+                                    Text("Explorar mi lista 'Por Leer'")
+                                }
+                            }
+                            WatchStatus.COMPLETED, WatchStatus.PLANNED -> { // Equivalente a "Terminado" o "Por Leer"
+                                Button(
+                                    onClick = { navController.navigate(Screen.AddMedia.createRoute(-1)) },
+                                    modifier = Modifier.fillMaxWidth(0.8f)
+                                ) {
+                                    Text("Agregar $tipoTexto a mano")
+                                }
+                            }
+                            else -> {}
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Botón de Discovery para Impresos
+                        OutlinedButton(
+                            onClick = { 
+                                navController.navigate(Screen.Discovery.route) {
+                                    // Reutiliza la pantalla Discovery si ya estaba abierta en el fondo
+                                    launchSingleTop = true
+                                    // Restaura el estado de scroll/búsqueda que tenía Discovery antes
+                                    restoreState = true
+                                    // Limpia las pantallas intermedias para no acumular basura en el botón de atrás
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(0.8f)
+                        ) {
+                            Text("Buscar en el Centro de Descubrimiento")
+                        }
+                    }
+
                     // ── BOTÓN DE MAL (ANIME O MANGA) ──
                     val showMalImportEmpty = (state.listMode == ListMode.AUDIOVISUAL && state.selectedTab == MediaType.ANIME) ||
                                              (state.listMode == ListMode.PRINTED && state.selectedPrintTab == PrintType.MANGA)
 
                     if (showMalImportEmpty) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = { viewModel.startMalLogin() }) {
                             Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
@@ -307,7 +415,19 @@ fun MyListScreen(
                             onEdit = { navController.navigate(Screen.AddMedia.createRoute(item.id)) },
                             onDelete = { viewModel.deleteItem(item) },
                             onStatusChange = { newStatus -> viewModel.updateStatus(item, newStatus) },
-                            onPlusOne = { viewModel.plusOneEpisode(it) }
+                            onPlusOne = { viewModel.plusOneEpisode(it) },
+                            onStartViewingClick = {
+                                selectedMediaItem = item
+                                showStartViewingDialog = true
+                            },
+                            onFinSeasonClick = {
+                                selectedMediaItem = item
+                                showFinSeasonDialog = true
+                            },
+                            onLongPlusClick = {
+                                selectedMediaItem = item
+                                showCustomEpisodeDialog = true
+                            }
                         )
                     }
                 } else {
@@ -327,6 +447,95 @@ fun MyListScreen(
             }
         }
     }
+
+    // ── DIÁLOGO 1: Empezar a ver desde "Por ver" ──
+    if (showStartViewingDialog && selectedMediaItem != null) {
+        AlertDialog(
+            onDismissRequest = { showStartViewingDialog = false },
+            title = { Text("¡A empezar a ver! 🎬") },
+            text = { Text("¿Quieres indicar la temporada y los capítulos totales de \"${selectedMediaItem!!.title}\"?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showStartViewingDialog = false
+                        navController.navigate(Screen.AddMedia.createRoute(selectedMediaItem!!.id))
+                    }
+                ) { Text("Sí, editar") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showStartViewingDialog = false
+                        viewModel.startViewingWithDefaults(selectedMediaItem!!)
+                    }
+                ) { Text("No, rápido (T1 - 1/?)") }
+            }
+        )
+    }
+
+    // ── DIÁLOGO 2: Fin de temporada/serie alcanzado ──
+    if (showFinSeasonDialog && selectedMediaItem != null) {
+        AlertDialog(
+            onDismissRequest = { showFinSeasonDialog = false },
+            title = { Text("¡Llegaste al límite! 🏁") },
+            text = { Text("¿Completaste \"${selectedMediaItem!!.title}\" o salieron nuevos capítulos?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showFinSeasonDialog = false
+                        viewModel.plusOneEpisode(selectedMediaItem!!)
+                    }
+                ) { Text("Marcar como Visto", color = MaterialTheme.colorScheme.primary) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showFinSeasonDialog = false
+                        navController.navigate(Screen.AddMedia.createRoute(selectedMediaItem!!.id))
+                    }
+                ) { Text("Editar (Nueva temp/caps)") }
+            }
+        )
+    }
+
+    // ── DIÁLOGO 3: Entrada manual de capítulos (Click Largo) ──
+    if (showCustomEpisodeDialog && selectedMediaItem != null) {
+        var episodeInput by remember { mutableStateOf(selectedMediaItem!!.watchedEpisodes.toString()) }
+        
+        AlertDialog(
+            onDismissRequest = { showCustomEpisodeDialog = false },
+            title = { Text("Indicar capítulo actual 🎯") },
+            text = {
+                Column {
+                    Text("¿En qué capítulo de \"${selectedMediaItem!!.title}\" te quedaste?")
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = episodeInput,
+                        // El filtro evita que el usuario intente pegar letras o símbolos raros
+                        onValueChange = { text -> episodeInput = text.filter { it.isDigit() } },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        label = { Text("Capítulo número") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCustomEpisodeDialog = false
+                        val capsCargados = episodeInput.toIntOrNull() ?: selectedMediaItem!!.watchedEpisodes
+                        viewModel.updateWatchedEpisodes(selectedMediaItem!!, capsCargados)
+                    }
+                ) { Text("Guardar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomEpisodeDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
 
 // ---- Chips de filtro ----
@@ -343,13 +552,17 @@ fun FilterStatusRow(selectedStatus: WatchStatus?, listMode: ListMode, onFilterCh
 }
 
 // ---- Card Audiovisual ----
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaItemCard(
     item: MediaItemEntity,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onStatusChange: (WatchStatus) -> Unit,
-    onPlusOne: (MediaItemEntity) -> Unit
+    onPlusOne: (MediaItemEntity) -> Unit,
+    onStartViewingClick: () -> Unit,
+    onFinSeasonClick: () -> Unit,
+    onLongPlusClick: () -> Unit
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -452,13 +665,17 @@ fun MediaItemCard(
 
                 // Temporada + progreso de episodios (solo Series y Anime)
                 if (item.mediaType != MediaType.MOVIE && item.totalEpisodes > 0) {
-                    val progress = (item.watchedEpisodes.toFloat() / item.totalEpisodes.toFloat())
-                        .coerceIn(0f, 1f)
+                    val progress = if (item.totalEpisodes > 0) {
+                        (item.watchedEpisodes.toFloat() / item.totalEpisodes.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        0f // Queda vacía si no sabemos el total
+                    }
 
-                    // "T2 · 6/13 eps"
+                    // "T2 · 6/13 eps" o "T2 · 1/? eps" si es indefinido
+                    val totalText = if (item.totalEpisodes == 0) "?" else item.totalEpisodes.toString()
                     val label = buildString {
                         if (item.mediaType == MediaType.SERIES) append("T${item.currentSeason} · ")
-                        append("${item.watchedEpisodes}/${item.totalEpisodes} eps")
+                        append("${item.watchedEpisodes}/$totalText eps")
                     }
                     Text(
                         text     = label,
@@ -492,30 +709,48 @@ fun MediaItemCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(end = 6.dp)
             ) {
-                // Botón +1 episodio
-                if (item.mediaType != MediaType.MOVIE && item.watchStatus == WatchStatus.WATCHING) {
-                    IconButton(
-                        onClick = {
-                            if (item.watchedEpisodes < item.totalEpisodes) {
-                                onPlusOne(item)
-                            } else {
-                                android.widget.Toast.makeText(
-                                    ctx,
-                                    "Modifique la serie a la siguiente temporada editando la tarjeta",
-                                    android.widget.Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
+                // Botón +1 inteligente (Aparece en Viendo, Por Ver, o si quedó desincronizado en Visto)
+                val mType = item.mediaType != MediaType.MOVIE
+                val mostrarPorDesincronizacion = item.watchStatus == WatchStatus.COMPLETED && item.totalEpisodes > 0 && item.watchedEpisodes < item.totalEpisodes
+                val debeMostrarPlus = mType && (item.watchStatus == WatchStatus.WATCHING || item.watchStatus == WatchStatus.PLANNED || mostrarPorDesincronizacion)
+
+                if (debeMostrarPlus) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize() // Mantiene el tamaño táctil ideal de accesibilidad (48dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .combinedClickable(
+                                onClick = {
+                                    when (item.watchStatus) {
+                                        WatchStatus.PLANNED -> onStartViewingClick()
+                                        else -> {
+                                            val proximoEpisodio = item.watchedEpisodes + 1
+                                            val llegoAlTope = item.totalEpisodes > 0 && proximoEpisodio >= item.totalEpisodes && !item.isAiring
+
+                                            if (llegoAlTope) {
+                                                onFinSeasonClick()
+                                            } else {
+                                                onPlusOne(item)
+                                            }
+                                        }
+                                    }
+                                },
+                                onLongClick = {
+                                    onLongPlusClick()
+                                }
+                            )
                     ) {
                         // Ícono diferente si ya completó todos los eps
                         val tint = if (item.watchedEpisodes >= item.totalEpisodes && item.totalEpisodes > 0)
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                         else
                             MaterialTheme.colorScheme.primary
-
+                        
                         Icon(
                             imageVector        = Icons.Filled.AddCircle,
-                            contentDescription = "+1 episodio",
+                            contentDescription = "+1 episodio / Mantener para cambiar cantidad",
                             tint               = tint,
                             modifier           = Modifier.size(28.dp)
                         )

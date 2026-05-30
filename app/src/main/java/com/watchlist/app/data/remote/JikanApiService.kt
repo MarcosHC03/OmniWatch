@@ -19,6 +19,11 @@ interface JikanApiService {
         @Query("q") query: String
     ): JikanAnimeSearchResponse
 
+    @GET("anime/{id}")
+    suspend fun getAnimeById(
+        @Path("id") animeId: Int
+    ): JikanAnimeDetailResponse
+
     @GET("seasons/now")
     suspend fun getCurrentSeasonAnime()
     : JikanAnimeSearchResponse
